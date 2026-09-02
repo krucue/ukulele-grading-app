@@ -1,5 +1,10 @@
 # ระบบตรวจข้อสอบจากภาพถ่าย + บันทึกคะแนนลง Google Sheet
 
+![Python](https://img.shields.io/badge/Python-3.10%2B-2F5D50?style=flat-square&logo=python&logoColor=white)
+![Ruff](https://img.shields.io/badge/lint-ruff%20passing-2F5D50?style=flat-square&logo=ruff&logoColor=white)
+![Tests](https://img.shields.io/badge/tests-47%20passed-2F5D50?style=flat-square)
+![Offline](https://img.shields.io/badge/demo-no%20API%20key%20needed-B8722A?style=flat-square)
+
 โค้ดชุดนี้เป็น implementation ตาม logic ที่ออกแบบไว้ก่อนหน้า: ถ่าย/สแกนภาพ → OCR →
 ให้คะแนนแบบยืดหยุ่นตามระดับความใกล้เคียง (tier-based) → แยกส่งครูตรวจถ้าจำเป็น → บันทึกลง
 Google Sheet
