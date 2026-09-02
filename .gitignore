@@ -1,0 +1,51 @@
+# ---------- Python ----------
+__pycache__/
+*.py[cod]
+*.egg-info/
+build/
+dist/
+.venv/
+venv/
+env/
+
+# ---------- เครื่องมือ dev ----------
+.ruff_cache/
+.pytest_cache/
+.mypy_cache/
+node_modules/
+
+# ---------- ความลับ: ห้ามขึ้น git เด็ดขาด ----------
+# service account ของ Google (ใช้กับ GoogleVisionOcrProvider / GoogleSheetsWriter)
+service-account*.json
+*-service-account.json
+credentials*.json
+client_secret*.json
+token.json
+# ANTHROPIC_API_KEY และคีย์อื่น ๆ
+.env
+.env.*
+!.env.example
+
+# ---------- ข้อมูลนักเรียน: ภาพกระดาษคำตอบมีชื่อ-ลายมือเด็ก ----------
+# เก็บไว้นอก repo เสมอ ไม่มีภาพข้อสอบไฟล์ไหนที่ต้อง commit อยู่แล้ว
+*.jpg
+*.jpeg
+*.png
+*.heic
+*.pdf
+
+# ---------- ผลลัพธ์ที่สคริปต์สร้างขึ้น ----------
+# CsvDryRunWriter (ค่าเริ่มต้นของ grade_exam.py --sheet csv และ demo/run_demo.py)
+results_dry_run.csv
+results*.csv
+# grade_exam.py --keep-aligned
+_aligned_page*.png
+# tools/calibrate_regions.py
+*_boxes.jpg
+
+# ---------- ระบบปฏิบัติการ / editor ----------
+Thumbs.db
+desktop.ini
+.DS_Store
+.idea/
+.vscode/

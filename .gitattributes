@@ -1,0 +1,26 @@
+# บังคับให้ไฟล์ข้อความเป็น LF ทั้งใน repo และใน working tree
+# กันปัญหา diff รกทั้งไฟล์เวลาคนใช้ Windows กับ macOS/Linux สลับกันแก้
+* text=auto eol=lf
+
+# ---------- ระบุชนิดให้ชัด ----------
+*.py    text eol=lf
+*.jsx   text eol=lf
+*.json  text eol=lf
+*.toml  text eol=lf
+*.md    text eol=lf
+*.txt   text eol=lf
+.gitignore     text eol=lf
+.gitattributes text eol=lf
+
+# ---------- ห้ามแตะ ----------
+# CSV ที่ CsvDryRunWriter เขียนออกมาเป็น CRLF + UTF-8 BOM โดยตั้งใจ
+# (เพื่อให้ Excel เปิดภาษาไทยได้ถูก) ถ้าปล่อยให้ git แปลง eol จะพังทันที
+*.csv   -text
+
+# ภาพ/เอกสาร เป็น binary ล้วน (ปกติถูก .gitignore กันไว้อยู่แล้ว
+# แต่กันไว้เผื่อมีคน git add -f)
+*.png   binary
+*.jpg   binary
+*.jpeg  binary
+*.heic  binary
+*.pdf   binary

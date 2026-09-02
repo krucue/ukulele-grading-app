@@ -1,0 +1,41 @@
+# ตั้งค่า ruff สำหรับโปรเจกต์ตรวจข้อสอบอูคูเลเล่
+# รันด้วย:  python -m ruff check .        (ตรวจ)
+#           python -m ruff check . --fix  (แก้อัตโนมัติ)
+
+target-version = "py310"   # โค้ดใช้ `X | None` / `list[str]` ตรง ๆ ในไทป์แอนโนเทชัน
+line-length = 100          # ใช้กับ formatter เท่านั้น — ไม่ได้เปิด E501 (โค้ดเดิมหลายบรรทัดยาวกว่านี้)
+
+[lint]
+# ล็อกชุดกฎไว้ชัดเจน เพื่อให้ผลตรวจไม่เปลี่ยนตามเวอร์ชัน ruff ที่ติดตั้ง
+select = [
+    "E4", "E7", "E9",  # pycodestyle: import/statement/syntax (ไม่รวม E501 ความยาวบรรทัด)
+    "W",               # pycodestyle warnings
+    "F",               # pyflakes: ตัวแปร/อิมพอร์ตที่ไม่ได้ใช้
+    "I",               # isort: เรียงลำดับ import
+    "UP",              # pyupgrade: ไวยากรณ์ใหม่ตาม target-version
+    "B",               # flake8-bugbear
+    "BLE",             # blind except (except Exception ล้วน ๆ)
+    "SIM",             # flake8-simplify
+    "C4",              # comprehension ที่เขียนสั้นกว่าได้
+    "DTZ",             # datetime ที่ไม่มี timezone
+    "PIE", "RUF",      # กฎเบ็ดเตล็ด + กฎเฉพาะของ ruff
+    "FA",              # บังคับ from __future__ import annotations
+    "ISC", "G", "LOG", # string concat ใน implicit / logging ที่เขียนผิดแบบ
+    "PT",              # flake8-pytest-style
+    "PGH",             # ห้าม noqa/type: ignore แบบไม่ระบุรหัส
+    "FLY", "FURB",     # โมเดิร์นไนซ์เพิ่มเติม
+    "EXE", "INT", "PYI", "T10", "ERA",
+]
+
+ignore = [
+    "RUF001", "RUF002", "RUF003",  # โค้ดเบสเป็นภาษาไทย — unicode "กำกวม" เป็นเรื่องปกติ
+]
+
+[lint.per-file-ignores]
+# สคริปต์เทส/เดโม/เครื่องมือ รันตรงจาก command line และ print ผลออกจอเป็นปกติ
+"tests/*" = ["T20"]
+"demo/*" = ["T20"]
+"tools/*" = ["T20"]
+
+[lint.isort]
+known-first-party = ["grading"]

@@ -1,0 +1,321 @@
+{
+  "exam_id": "music_g5_final_2569",
+  "subject": "ดนตรี (อูคูเลเล่)",
+  "grade": "5/1-3",
+  "total_score": 15,
+  "grading_settings": {
+    "_comment": "ครูตั้งค่า 2 ค่านี้เองตอนสร้าง/แก้ไขเฉลย ผ่านหน้า UI ไม่ hardcode ในโค้ด",
+    "ocr_confidence_threshold": 0.75,
+    "ocr_confidence_threshold_help": "ถ้า OCR อ่านคำตอบข้อใดได้ค่า confidence ต่ำกว่านี้ ระบบจะส่งข้อนั้นให้ครูตรวจ ไม่ว่าคะแนนที่คำนวณได้จะเป็นเท่าไหร่ (ค่าอยู่ระหว่าง 0.00-1.00)",
+    "borderline_buffer_percent": 3,
+    "borderline_buffer_help": "ถ้า % ความใกล้เคียงของคำตอบอยู่ในช่วง ±ค่านี้ รอบเส้นแบ่ง tier ใดๆ ระบบจะส่งข้อนั้นให้ครูตรวจ (หน่วยเป็นเปอร์เซ็นต์)"
+  },
+  "questions": [
+    {
+      "question_id": "1.1",
+      "question_group": "1",
+      "label": "ความหมายของสัญลักษณ์: เส้นหนาด้านบนสุด",
+      "type": "short_answer",
+      "scoring_method": "string_similarity",
+      "max_score": 1,
+      "acceptable_answers": [
+        "นัต / จุดเริ่มต้นของสาย",
+        "หัวกีตาร์ ตำแหน่งเริ่มสาย"
+      ],
+      "answer_note": "ตัวอย่างคำตอบ ครูควรตรวจสอบ/แก้ไขให้ตรงกับที่สอนจริง",
+      "score_tiers": [
+        {
+          "min_similarity_percent": 85,
+          "score": 1.0
+        },
+        {
+          "min_similarity_percent": 60,
+          "score": 0.5
+        },
+        {
+          "min_similarity_percent": 0,
+          "score": 0.0,
+          "flag_for_review": true
+        }
+      ]
+    },
+    {
+      "question_id": "1.2",
+      "question_group": "1",
+      "label": "ความหมายของสัญลักษณ์: O",
+      "type": "short_answer",
+      "scoring_method": "string_similarity",
+      "max_score": 1,
+      "acceptable_answers": [
+        "ดีดสายเปล่า / สายเปิด (ไม่ต้องกด)"
+      ],
+      "score_tiers": [
+        {
+          "min_similarity_percent": 85,
+          "score": 1.0
+        },
+        {
+          "min_similarity_percent": 60,
+          "score": 0.5
+        },
+        {
+          "min_similarity_percent": 0,
+          "score": 0.0,
+          "flag_for_review": true
+        }
+      ]
+    },
+    {
+      "question_id": "1.3",
+      "question_group": "1",
+      "label": "ความหมายของสัญลักษณ์: X",
+      "type": "short_answer",
+      "scoring_method": "string_similarity",
+      "max_score": 1,
+      "acceptable_answers": [
+        "ไม่ดีดสายนั้น / ห้ามเล่นสายนั้น"
+      ],
+      "score_tiers": [
+        {
+          "min_similarity_percent": 85,
+          "score": 1.0
+        },
+        {
+          "min_similarity_percent": 60,
+          "score": 0.5
+        },
+        {
+          "min_similarity_percent": 0,
+          "score": 0.0,
+          "flag_for_review": true
+        }
+      ]
+    },
+    {
+      "question_id": "2.1",
+      "question_group": "2",
+      "label": "ต้องใช้นิ้วใด กดสายใด ที่ช่องเฟร็ตใด",
+      "type": "short_answer_structured",
+      "scoring_method": "string_similarity",
+      "max_score": 1,
+      "acceptable_answers": [
+        "นิ้วนาง กดสาย A ที่ช่องเฟร็ต 3"
+      ],
+      "answer_note": "ตัวอย่างอิงจากภาพคอร์ดในข้อสอบ ครูต้องตรวจสอบให้ตรงกับคอร์ดที่ใช้จริง เพราะมี 3 องค์ประกอบต้องถูกครบ (นิ้ว/สาย/เฟร็ต)",
+      "score_tiers": [
+        {
+          "min_similarity_percent": 80,
+          "score": 1.0
+        },
+        {
+          "min_similarity_percent": 50,
+          "score": 0.5
+        },
+        {
+          "min_similarity_percent": 0,
+          "score": 0.0,
+          "flag_for_review": true
+        }
+      ]
+    },
+    {
+      "question_id": "2.2",
+      "question_group": "2",
+      "label": "มีสายใดบ้างที่ดีดเป็นสายเปล่า",
+      "type": "short_answer",
+      "scoring_method": "string_similarity",
+      "max_score": 1,
+      "acceptable_answers": [
+        "สาย G, C, E"
+      ],
+      "answer_note": "ตัวอย่างอิงจากภาพคอร์ด ครูควรตรวจสอบให้ตรงกับรูปจริง",
+      "score_tiers": [
+        {
+          "min_similarity_percent": 85,
+          "score": 1.0
+        },
+        {
+          "min_similarity_percent": 60,
+          "score": 0.5
+        },
+        {
+          "min_similarity_percent": 0,
+          "score": 0.0,
+          "flag_for_review": true
+        }
+      ]
+    },
+    {
+      "question_id": "2.3",
+      "question_group": "2",
+      "label": "เวลาเล่นคอร์ดนี้ ต้องดีดทั้งหมดกี่สาย",
+      "type": "numeric",
+      "scoring_method": "exact_match",
+      "max_score": 1,
+      "acceptable_answers": [
+        "4",
+        "4 สาย"
+      ],
+      "score_tiers": [
+        {
+          "min_similarity_percent": 100,
+          "score": 1.0
+        },
+        {
+          "min_similarity_percent": 0,
+          "score": 0.0,
+          "flag_for_review": true
+        }
+      ]
+    },
+    {
+      "question_id": "3",
+      "question_group": "3",
+      "label": "อ่านแท็บแล้วอธิบายลำดับการดีดสาย/เฟร็ต",
+      "type": "sequence_description",
+      "scoring_method": "string_similarity",
+      "max_score": 2,
+      "acceptable_answers": [
+        "ดีดสาย G เปิด แล้วสาย C เปิด แล้วสาย E เปิด แล้วสาย A เปิด ตามลำดับ"
+      ],
+      "answer_note": "ตัวอย่างอิงจากตำแหน่ง 0 ในแท็บ ครูต้องตรวจสอบลำดับให้ตรงกับแท็บจริง การตรวจเน้นลำดับ (sequence) ไม่ใช่แค่คำที่ตรงกัน",
+      "score_tiers": [
+        {
+          "min_similarity_percent": 85,
+          "score": 2.0
+        },
+        {
+          "min_similarity_percent": 60,
+          "score": 1.0
+        },
+        {
+          "min_similarity_percent": 0,
+          "score": 0.0,
+          "flag_for_review": true
+        }
+      ]
+    },
+    {
+      "question_id": "4",
+      "question_group": "4",
+      "label": "ความแตกต่างระหว่าง Strumming กับ Picking",
+      "type": "descriptive",
+      "scoring_method": "llm_semantic",
+      "max_score": 3,
+      "reference_answer": "Strumming คือการดีดสายพร้อมกันหลายสายเป็นจังหวะ ส่วน Picking คือการดีดทีละสายด้วยนิ้วตามรูปแบบที่กำหนด",
+      "llm_grading_instructions": "พิจารณาความหมายเป็นหลัก ไม่ใช่คำที่ตรงตัวเป๊ะ ยอมรับการสะกดผิดเล็กน้อยจาก OCR ให้คะแนนตามความครบถ้วนของแนวคิด 2 ข้อ: (1) Strumming = ดีดพร้อมกันหลายสาย (2) Picking = ดีดทีละสาย",
+      "score_tiers": [
+        {
+          "min_similarity_percent": 90,
+          "score": 3.0
+        },
+        {
+          "min_similarity_percent": 75,
+          "score": 2.5
+        },
+        {
+          "min_similarity_percent": 55,
+          "score": 2.0
+        },
+        {
+          "min_similarity_percent": 35,
+          "score": 1.0
+        },
+        {
+          "min_similarity_percent": 0,
+          "score": 0.0,
+          "flag_for_review": true
+        }
+      ]
+    },
+    {
+      "question_id": "5.1",
+      "question_group": "5",
+      "label": "นิ้วหัวแม่มือ (P) รับผิดชอบสายใด",
+      "type": "short_answer",
+      "scoring_method": "exact_match",
+      "max_score": 1,
+      "acceptable_answers": [
+        "สาย G"
+      ],
+      "answer_note": "ตามหลักการเล่น Picking มาตรฐาน 1 นิ้วต่อ 1 สาย ครูตรวจสอบให้ตรงกับที่สอน",
+      "score_tiers": [
+        {
+          "min_similarity_percent": 100,
+          "score": 1.0
+        },
+        {
+          "min_similarity_percent": 0,
+          "score": 0.0,
+          "flag_for_review": true
+        }
+      ]
+    },
+    {
+      "question_id": "5.2",
+      "question_group": "5",
+      "label": "นิ้วชี้ (I) รับผิดชอบสายใด",
+      "type": "short_answer",
+      "scoring_method": "exact_match",
+      "max_score": 1,
+      "acceptable_answers": [
+        "สาย C"
+      ],
+      "score_tiers": [
+        {
+          "min_similarity_percent": 100,
+          "score": 1.0
+        },
+        {
+          "min_similarity_percent": 0,
+          "score": 0.0,
+          "flag_for_review": true
+        }
+      ]
+    },
+    {
+      "question_id": "5.3",
+      "question_group": "5",
+      "label": "นิ้วกลาง (M) รับผิดชอบสายใด",
+      "type": "short_answer",
+      "scoring_method": "exact_match",
+      "max_score": 1,
+      "acceptable_answers": [
+        "สาย E"
+      ],
+      "score_tiers": [
+        {
+          "min_similarity_percent": 100,
+          "score": 1.0
+        },
+        {
+          "min_similarity_percent": 0,
+          "score": 0.0,
+          "flag_for_review": true
+        }
+      ]
+    },
+    {
+      "question_id": "5.4",
+      "question_group": "5",
+      "label": "นิ้วนาง (A) รับผิดชอบสายใด",
+      "type": "short_answer",
+      "scoring_method": "exact_match",
+      "max_score": 1,
+      "acceptable_answers": [
+        "สาย A"
+      ],
+      "score_tiers": [
+        {
+          "min_similarity_percent": 100,
+          "score": 1.0
+        },
+        {
+          "min_similarity_percent": 0,
+          "score": 0.0,
+          "flag_for_review": true
+        }
+      ]
+    }
+  ]
+}

@@ -1,0 +1,17 @@
+# Core logic (similarity.py, scorer.py, config_loader.py, pipeline.py)
+# ไม่มี dependency ภายนอก — รัน demo/test ได้ทันทีโดยไม่ต้องติดตั้งอะไรในไฟล์นี้เลย
+
+# ขั้นตอนปรับแนว/ตัดภาพ (align.py, regions.py) และเครื่องมือ calibrate
+opencv-python-headless>=4.9.0
+numpy>=1.26.0
+pillow>=10.0.0
+
+# ต่อ LLM grader จริงสำหรับข้อคำตอบบรรยาย (เช่น ข้อ 4)
+anthropic>=0.40.0
+
+# ต่อ OCR จริงด้วย Google Cloud Vision
+google-cloud-vision>=3.7.0
+
+# เขียนผลคะแนนลง Google Sheets จริง
+google-api-python-client>=2.130.0
+google-auth>=2.30.0
