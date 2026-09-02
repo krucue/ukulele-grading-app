@@ -1,8 +1,8 @@
 # ระบบตรวจข้อสอบจากภาพถ่าย + บันทึกคะแนนลง Google Sheet
 
+[![CI](https://github.com/krucue/ukulele-grading-app/actions/workflows/ci.yml/badge.svg)](https://github.com/krucue/ukulele-grading-app/actions/workflows/ci.yml)
 ![Python](https://img.shields.io/badge/Python-3.10%2B-2F5D50?style=flat-square&logo=python&logoColor=white)
-![Ruff](https://img.shields.io/badge/lint-ruff%20passing-2F5D50?style=flat-square&logo=ruff&logoColor=white)
-![Tests](https://img.shields.io/badge/tests-47%20passed-2F5D50?style=flat-square)
+![Ruff](https://img.shields.io/badge/linted%20with-ruff-2F5D50?style=flat-square&logo=ruff&logoColor=white)
 ![Offline](https://img.shields.io/badge/demo-no%20API%20key%20needed-B8722A?style=flat-square)
 
 โค้ดชุดนี้เป็น implementation ตาม logic ที่ออกแบบไว้ก่อนหน้า: ถ่าย/สแกนภาพ → OCR →
@@ -120,6 +120,23 @@ python -m ruff check . --fix   # แก้อัตโนมัติเท่�
 กฎที่เปิดเพิ่มภายหลังและเก็บกวาดจนสะอาดแล้ว: `S` (ความปลอดภัย), `RET`, `PERF`, `ARG`, `A`, `TRY`
 โดย `S108` จับบั๊กจริงได้ 3 จุด — โค้ดเขียนไฟล์ชั่วคราวลง `/tmp/` ซึ่ง **ไม่มีอยู่บน Windows**
 `cv2.imwrite()` จึงคืน `False` เขียนไม่สำเร็จเงียบ ๆ แก้เป็น `tempfile.gettempdir()` แล้ว
+
+## CI อัตโนมัติ
+
+`.github/workflows/ci.yml` รันทุกครั้งที่ push เข้า `main` และทุก pull request รวม 5 job:
+
+| job | ทำอะไร |
+|---|---|
+| `ruff` | `ruff check .` ด้วย ruff เวอร์ชันที่ปักไว้ (0.16.5) ให้ผลตรงกับที่รันในเครื่อง |
+| `เทส` × 4 | รันเทสทั้ง 4 ชุด + `demo/run_demo.py` บน `ubuntu-latest` และ `windows-latest` × Python `3.10` และ `3.13` |
+
+เหตุผลที่ต้องเทสบน **Windows** ด้วยไม่ใช่ใส่เผื่อ — โปรเจกต์นี้เคยมีบั๊ก 2 ตัวที่โผล่เฉพาะ
+บน Windows เท่านั้น: `cv2.imwrite()` เขียนไฟล์ลง `/tmp/` ไม่สำเร็จโดยไม่แจ้ง error
+และ console cp874 พิมพ์ภาษาไทยแล้วโปรแกรมตาย ทั้งสองอย่างรันบน Linux ผ่านฉลุย
+
+เหตุผลที่ต้องเทส **Python 3.10** — เป็นเวอร์ชันขั้นต่ำที่ README ประกาศไว้ ต้องพิสูจน์ว่ายังจริง
+
+สคริปต์เทสทุกไฟล์เรียก `sys.exit(1)` เมื่อมีเคสล้มเหลว CI จึงจับได้จริงไม่ใช่เขียวหลอก
 
 ## แต่ละไฟล์ทำหน้าที่ตรงไหนใน logic เดิม
 

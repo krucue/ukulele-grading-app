@@ -1,0 +1,66 @@
+name: CI
+
+on:
+  push:
+    branches: [main]
+  pull_request:
+    branches: [main]
+  workflow_dispatch:
+
+jobs:
+  lint:
+    name: ruff
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+
+      - uses: actions/setup-python@v5
+        with:
+          python-version: "3.12"
+
+      # ปักเวอร์ชันไว้ให้ตรงกับที่ใช้ตอนพัฒนา — ruff.toml ล็อกชุดกฎไว้แล้ว
+      # การปักเวอร์ชันตรงนี้ทำให้ผลตรวจใน CI เหมือนกับที่รันในเครื่องเป๊ะ
+      - name: ติดตั้ง ruff
+        run: pip install ruff==0.16.5
+
+      - name: ตรวจ lint
+        run: ruff check . --output-format=github
+
+  test:
+    name: เทส (${{ matrix.os }} / Python ${{ matrix.python-version }})
+    runs-on: ${{ matrix.os }}
+    strategy:
+      fail-fast: false
+      matrix:
+        # windows-latest จำเป็นจริง ๆ ไม่ใช่ใส่เผื่อ — โปรเจกต์นี้เคยมีบั๊ก
+        # 2 ตัวที่โผล่เฉพาะบน Windows: เขียนไฟล์ลง /tmp ไม่ได้ และ console
+        # เข้ารหัส cp874 พิมพ์ภาษาไทยไม่ได้
+        os: [ubuntu-latest, windows-latest]
+        # 3.10 คือขั้นต่ำที่ README ประกาศไว้ ต้องเทสจริงว่ายังรันได้
+        python-version: ["3.10", "3.13"]
+
+    steps:
+      - uses: actions/checkout@v4
+
+      - uses: actions/setup-python@v5
+        with:
+          python-version: ${{ matrix.python-version }}
+          cache: pip
+
+      - name: ติดตั้ง dependency
+        run: pip install -r requirements.txt
+
+      - name: เทส logic การให้คะแนน
+        run: python tests/test_core.py
+
+      - name: เทสปรับแนวภาพเอียง
+        run: python tests/test_align.py
+
+      - name: เทส regions + pipeline
+        run: python tests/test_regions_and_pipeline.py
+
+      - name: เทส SDK ของ Claude/Google (mock)
+        run: python tests/test_real_integrations_mocked.py
+
+      - name: รัน demo ทั้ง pipeline
+        run: python demo/run_demo.py
