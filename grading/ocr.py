@@ -32,7 +32,8 @@ class MockOcrProvider:
         # canned_answers: {"1.1": {"text": "...", "confidence": 0.9}, ...}
         self.canned_answers = canned_answers
 
-    def extract(self, image_path: str, question_ids: list[str]) -> dict[str, OcrResult]:
+    # image_path ไม่ได้ใช้ แต่ต้องคงไว้ให้ตรง protocol OcrProvider (grade_exam.py เรียกด้วย keyword)
+    def extract(self, image_path: str, question_ids: list[str]) -> dict[str, OcrResult]:  # noqa: ARG002
         out = {}
         for qid in question_ids:
             item = self.canned_answers.get(qid, {"text": "", "confidence": 0.0})
@@ -114,7 +115,5 @@ def _average_word_confidence(full_text_annotation) -> float:
     for page in full_text_annotation.pages:
         for block in page.blocks:
             for paragraph in block.paragraphs:
-                for word in paragraph.words:
-                    if word.confidence:
-                        scores.append(word.confidence)
+                scores.extend(w.confidence for w in paragraph.words if w.confidence)
     return round(sum(scores) / len(scores), 3) if scores else 0.0

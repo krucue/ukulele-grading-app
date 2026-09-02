@@ -24,6 +24,7 @@ import argparse
 import json
 import os
 import sys
+import tempfile
 
 from grading.align import align_and_crop_file
 from grading.config_loader import load_config
@@ -87,9 +88,12 @@ def main() -> None:
         if not os.path.exists(photo_path):
             fail(f"ไม่พบไฟล์ภาพหน้า {page_number}: {photo_path}")
             return
-        align_result = align_and_crop_file(
-            photo_path, f"_aligned_page{page_number}.png" if args.keep_aligned else "/tmp/_aligned.png"
+        aligned_path = (
+            f"_aligned_page{page_number}.png"
+            if args.keep_aligned
+            else os.path.join(tempfile.gettempdir(), f"_aligned_page{page_number}.png")
         )
+        align_result = align_and_crop_file(photo_path, aligned_path)
         if not align_result.corners_found:
             print(
                 f"[คำเตือน] หน้า {page_number}: หาไม่เจอขอบกระดาษชัดเจน "

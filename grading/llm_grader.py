@@ -26,8 +26,7 @@ class SemanticGrader(Protocol):
 def _strip_code_fence(text: str) -> str:
     text = text.strip()
     text = re.sub(r"^```(json)?", "", text).strip()
-    text = re.sub(r"```$", "", text).strip()
-    return text
+    return re.sub(r"```$", "", text).strip()
 
 
 GRADER_PROMPT_TEMPLATE = """คุณเป็นครูตรวจข้อสอบดนตรีระดับประถมศึกษา ตรวจอย่างยุติธรรมและใจกว้างกับคำตอบเด็ก

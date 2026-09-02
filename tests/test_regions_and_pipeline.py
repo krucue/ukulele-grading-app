@@ -12,6 +12,7 @@ from __future__ import annotations
 import json
 import os
 import sys
+import tempfile
 
 sys.path.insert(0, os.path.join(os.path.dirname(__file__), ".."))
 
@@ -88,8 +89,9 @@ if len(sys.argv) >= 3:
         canned = json.load(f)
 
     config = load_config(CONFIG_PATH)
-    align1 = align_and_crop_file(sys.argv[1], "/tmp/_test_aligned1.png")
-    align2 = align_and_crop_file(sys.argv[2], "/tmp/_test_aligned2.png")
+    tmp_dir = tempfile.gettempdir()
+    align1 = align_and_crop_file(sys.argv[1], os.path.join(tmp_dir, "_test_aligned1.png"))
+    align2 = align_and_crop_file(sys.argv[2], os.path.join(tmp_dir, "_test_aligned2.png"))
     check("align หน้า 1 ได้ขนาดตรง reference", align1.image.shape[:2] == (template.reference_height, template.reference_width))
     check("align หน้า 2 ได้ขนาดตรง reference", align2.image.shape[:2] == (template.reference_height, template.reference_width))
 

@@ -25,10 +25,17 @@ select = [
     "PGH",             # ห้าม noqa/type: ignore แบบไม่ระบุรหัส
     "FLY", "FURB",     # โมเดิร์นไนซ์เพิ่มเติม
     "EXE", "INT", "PYI", "T10", "ERA",
+    "S",               # flake8-bandit: ปัญหาความปลอดภัย (รวม S108 path /tmp ที่พังบน Windows)
+    "RET",             # return ที่เขียนสั้นกว่าได้
+    "PERF",            # ลูปที่เขียนให้เร็ว/อ่านง่ายกว่าได้
+    "ARG",             # argument ที่ประกาศแล้วไม่ได้ใช้
+    "A",               # ชื่อที่บัง builtin ของ Python
+    "TRY",             # flake8-tryceratops: การจัดการ exception
 ]
 
 ignore = [
     "RUF001", "RUF002", "RUF003",  # โค้ดเบสเป็นภาษาไทย — unicode "กำกวม" เป็นเรื่องปกติ
+    "TRY003",                      # ข้อความ error ภาษาไทยยาว ๆ ใน raise คือสิ่งที่ตั้งใจให้ครูอ่านรู้เรื่อง
 ]
 
 [lint.per-file-ignores]
@@ -36,6 +43,9 @@ ignore = [
 "tests/*" = ["T20"]
 "demo/*" = ["T20"]
 "tools/*" = ["T20"]
+# เทสชุดนี้ปลอม SDK ของ Google ต้องคง signature ให้ตรงของจริงเป๊ะ
+# (พารามิเตอร์ชื่อ `range` บัง builtin, และหลายตัวรับไว้เฉย ๆ ไม่ได้ใช้)
+"tests/test_real_integrations_mocked.py" = ["T20", "A002", "ARG001", "ARG002"]
 
 [lint.isort]
 known-first-party = ["grading"]
