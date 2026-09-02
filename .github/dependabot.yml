@@ -1,0 +1,38 @@
+# ให้ Dependabot เปิด PR อัตโนมัติเมื่อมีเวอร์ชันใหม่
+# เอกสาร: https://docs.github.com/code-security/dependabot/dependabot-version-updates
+version: 2
+
+updates:
+  # ---------- GitHub Actions ใน .github/workflows/ ----------
+  # ตัวนี้จำเป็นจริง — actions/checkout กับ setup-python เพิ่งค้างอยู่ที่ v4/v5
+  # จนขึ้นคำเตือน Node.js 20 deprecated โดยไม่มีใครรู้
+  - package-ecosystem: github-actions
+    directory: /
+    schedule:
+      interval: monthly
+      timezone: Asia/Bangkok
+    open-pull-requests-limit: 5
+    labels: [dependencies, github-actions]
+    commit-message:
+      prefix: "ci"
+    groups:
+      # รวมทุก action ไว้ใน PR เดียว จะได้ไม่มี PR ย่อยเต็มไปหมด
+      actions:
+        patterns: ["*"]
+
+  # ---------- ไลบรารี Python ใน requirements.txt ----------
+  # หมายเหตุ: requirements.txt ใช้ข้อจำกัดแบบ ">=" ไม่ได้ปักเวอร์ชันตายตัว
+  # Dependabot จะเสนอยกเลขขั้นต่ำให้ ซึ่งมีประโยชน์ตอนมีช่องโหว่ความปลอดภัย
+  # แต่ก็อาจมี PR ที่ไม่จำเป็นบ้าง จึงตั้งเป็นรายเดือนและรวมเป็น PR เดียว
+  - package-ecosystem: pip
+    directory: /
+    schedule:
+      interval: monthly
+      timezone: Asia/Bangkok
+    open-pull-requests-limit: 5
+    labels: [dependencies, python]
+    commit-message:
+      prefix: "deps"
+    groups:
+      python-packages:
+        patterns: ["*"]
