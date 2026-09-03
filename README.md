@@ -37,7 +37,8 @@ grading_app/
 │   ├── test_core.py                    # similarity + scorer (ไม่ต้องมี dependency ใดๆ)
 │   ├── test_align.py                   # align.py ด้วยภาพจำลอง (กระดาษเอียงบนพื้นหลัง)
 │   ├── test_regions_and_pipeline.py    # regions.py + end-to-end ภาพจริง (ถ้าส่ง path เข้ามา)
-│   └── test_real_integrations_mocked.py # ปลอม SDK ของ Claude/Google เพื่อเช็ค request/response โดยไม่ต้องมี credentials จริง
+│   ├── test_real_integrations_mocked.py # ปลอม SDK ของ Claude/Google เพื่อเช็ค request/response โดยไม่ต้องมี credentials จริง
+│   └── test_sdk_contract.py          # ใช้ SDK ตัวจริง (ไม่ปลอมโมดูล) จับกรณีไลบรารีอัปเวอร์ชันแล้วเปลี่ยน API
 ├── requirements.txt
 ├── ruff.toml           # ล็อกชุดกฎ lint ไว้ ไม่ให้ผลตรวจเปลี่ยนตามเวอร์ชัน ruff
 ├── .gitignore          # กัน credentials / ภาพกระดาษคำตอบของนักเรียน / ไฟล์ผลลัพธ์ ไม่ให้ขึ้น git
@@ -59,6 +60,7 @@ python tests/test_core.py                      # logic การให้คะ�
 python tests/test_align.py                     # ปรับแนวภาพเอียง
 python tests/test_regions_and_pipeline.py       # crop ต่อข้อ (เพิ่ม path ภาพจริง 2 หน้าเพื่อเทส end-to-end เต็ม)
 python tests/test_real_integrations_mocked.py   # เช็ค request/response ของ Claude/Google API แบบไม่ต้องมี credentials
+python tests/test_sdk_contract.py               # ยิงผ่าน SDK ตัวจริงเข้า server ปลอมใน localhost — จับ API ที่เปลี่ยนตอนอัปไลบรารี
 python demo/run_demo.py                          # จำลองตรวจนักเรียน 1 คนครบทุกข้อ แล้วบันทึกเป็น CSV
 
 # หรือรันสคริปต์หลักตัวจริงเลย (ด้วยภาพถ่าย 2 หน้า + คำตอบจำลอง)

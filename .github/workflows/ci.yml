@@ -62,5 +62,8 @@ jobs:
       - name: เทส SDK ของ Claude/Google (mock)
         run: python tests/test_real_integrations_mocked.py
 
+      - name: เทสสัญญากับ SDK ตัวจริง (opencv + anthropic)
+        run: python tests/test_sdk_contract.py
+
       - name: รัน demo ทั้ง pipeline
         run: python demo/run_demo.py
