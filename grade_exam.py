@@ -21,6 +21,7 @@ OCR -> ให้คะแนน -> บันทึกผล
 from __future__ import annotations
 
 import argparse
+import contextlib
 import json
 import os
 import sys
@@ -71,7 +72,41 @@ def fail(message: str) -> None:
     sys.exit(1)
 
 
+def show_usage_and_pause() -> None:
+    """กรณีเปิดโดยดับเบิลคลิก (ไม่มี argument เลย) — บอกวิธีใช้แล้วค้างหน้าจอไว้
+
+    ถ้าไม่มีอันนี้ argparse จะพิมพ์ usage แล้ว exit ทันที หน้าต่าง console ปิดเอง
+    ผู้ใช้จะเห็นแค่ 'เด้งออก' โดยไม่รู้สาเหตุ
+    """
+    print("=" * 70)
+    print("โปรแกรมนี้เปิดด้วยการดับเบิลคลิกไม่ได้ ต้องสั่งรันจาก terminal พร้อมระบุไฟล์ภาพ")
+    print("=" * 70)
+    print()
+    print("วิธีใช้ — เปิด PowerShell ที่โฟลเดอร์นี้ แล้วพิมพ์:")
+    print()
+    print("  [1] ลองดูตัวอย่างผลลัพธ์ก่อน (ไม่ต้องมีรูป ไม่ต้องมี API key):")
+    print("      python demo/run_demo.py")
+    print()
+    print("  [2] ตรวจจากรูปถ่ายจริง แบบทดสอบ (ใช้คำตอบจำลอง ไม่เรียก OCR จริง):")
+    print("      python grade_exam.py --page1 หน้า1.jpg --page2 หน้า2.jpg \\")
+    print("          --mock-answers demo/mock_ocr_answers.json --sheet csv --sheet-path out.csv")
+    print()
+    print("  [3] ตรวจจริงเต็มระบบ (ต้องตั้ง ANTHROPIC_API_KEY + Google credentials ก่อน):")
+    print("      python grade_exam.py --page1 หน้า1.jpg --page2 หน้า2.jpg \\")
+    print("          --ocr vision --llm claude \\")
+    print("          --student-name \"ด.ช. ทดสอบ ใจดี\" --student-no 12 --student-class 5/2")
+    print()
+    print("  ดูตัวเลือกทั้งหมด:  python grade_exam.py --help")
+    print()
+    with contextlib.suppress(EOFError, KeyboardInterrupt):
+        input("กด Enter เพื่อปิดหน้าต่างนี้...")
+
+
 def main() -> None:
+    if len(sys.argv) == 1:
+        show_usage_and_pause()
+        sys.exit(0)
+
     args = build_arg_parser().parse_args()
 
     # ---------- 1) โหลดเฉลย + template พิกัด crop ----------
