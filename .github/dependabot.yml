@@ -22,10 +22,16 @@ updates:
 
   # ---------- ไลบรารี Python ใน requirements.txt ----------
   # หมายเหตุ: requirements.txt ใช้ข้อจำกัดแบบ ">=" ไม่ได้ปักเวอร์ชันตายตัว
-  # Dependabot จะเสนอยกเลขขั้นต่ำให้ ซึ่งมีประโยชน์ตอนมีช่องโหว่ความปลอดภัย
-  # แต่ก็อาจมี PR ที่ไม่จำเป็นบ้าง จึงตั้งเป็นรายเดือนและรวมเป็น PR เดียว
+  # เครื่องที่ pip install ก็ได้ตัวล่าสุดอยู่แล้ว การยกพื้นขั้นต่ำจึงแทบไม่ได้อะไร
+  # มีแต่จะตัดเครื่องที่ Python เก่าออกไป (PR #1 ยก numpy>=2.5.2 ซึ่งต้องการ
+  # Python>=3.12 ทำให้ job Python 3.10 ติดตั้ง dependency ไม่ผ่านทั้ง 2 OS)
+  #
+  # increase-if-necessary = ยกพื้นเฉพาะตอนจำเป็นจริง เช่นมีช่องโหว่ความปลอดภัย
+  # หรือเวอร์ชันเดิมใช้ไม่ได้แล้ว ส่วน major bump ที่ต้องนั่งเทสจริง
+  # (opencv 4->5, anthropic 0.x->1.x) ให้อัปมือตอนมีเวลาทดสอบ
   - package-ecosystem: pip
     directory: /
+    versioning-strategy: increase-if-necessary
     schedule:
       interval: monthly
       timezone: Asia/Bangkok
