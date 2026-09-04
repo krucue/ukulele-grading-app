@@ -1,0 +1,141 @@
+/* โทนสีเดียวกับ AnswerReviewQueue.jsx เพื่อให้หน้าจอทั้งระบบดูเป็นชุดเดียวกัน */
+:root {
+  --ink: #2F5D50;
+  --ink-dark: #1F2A24;
+  --ochre: #B8722A;
+  --paper: #F6F4EE;
+  --card: #FFFFFF;
+  --border: #E4DFD3;
+  --muted: #7A776C;
+  --flag-bg: #FDF6EC;
+  --flag-border: #E8C89A;
+  --error: #A5342A;
+  --ok: #2F6B4F;
+}
+
+* { box-sizing: border-box; }
+
+body {
+  margin: 0;
+  background: var(--paper);
+  color: var(--ink-dark);
+  font-family: "Sarabun", "Leelawadee UI", "Tahoma", system-ui, sans-serif;
+  font-size: 16px;
+  line-height: 1.6;
+}
+
+.wrap { max-width: 940px; margin: 0 auto; padding: 0 20px; }
+
+.topbar { background: var(--ink); color: #fff; padding: 18px 0; margin-bottom: 24px; }
+.topbar-inner { display: flex; align-items: center; justify-content: space-between; gap: 16px; }
+.topbar h1 { margin: 0; font-size: 22px; }
+.topbar .sub { margin: 2px 0 0; color: #CFE0DA; font-size: 14px; }
+
+.link-btn {
+  background: transparent; border: 1px solid rgba(255,255,255,.45); color: #fff;
+  border-radius: 999px; padding: 6px 14px; font: inherit; font-size: 14px; cursor: pointer;
+}
+.link-btn:hover { background: rgba(255,255,255,.12); }
+
+.panel {
+  background: var(--card); border: 1px solid var(--border); border-radius: 12px;
+  padding: 20px; margin-bottom: 18px;
+}
+.panel h2 { margin: 0 0 14px; font-size: 17px; display: flex; align-items: center; gap: 10px; }
+
+.step {
+  display: inline-flex; align-items: center; justify-content: center;
+  width: 26px; height: 26px; border-radius: 50%;
+  background: var(--ink); color: #fff; font-size: 14px; flex: 0 0 auto;
+}
+
+.hint { color: var(--muted); font-size: 14px; margin: 0 0 12px; }
+
+/* ---------- ฟอร์มนักเรียน ---------- */
+.fields { display: flex; flex-wrap: wrap; gap: 14px; }
+.fields label { display: flex; flex-direction: column; gap: 5px; flex: 1 1 240px; font-size: 14px; color: var(--muted); }
+.fields label.narrow { flex: 0 1 120px; }
+input[type="text"] {
+  font: inherit; color: var(--ink-dark); padding: 10px 12px;
+  border: 1px solid var(--border); border-radius: 8px; background: #fff;
+}
+input[type="text"]:focus, input[type="number"]:focus { outline: 2px solid var(--ink); outline-offset: 1px; }
+
+/* ---------- ช่องลากรูป ---------- */
+.drops { display: flex; gap: 14px; flex-wrap: wrap; }
+.drop {
+  flex: 1 1 240px; min-height: 150px; cursor: pointer;
+  border: 2px dashed var(--border); border-radius: 12px; background: #FCFBF8;
+  display: flex; flex-direction: column; align-items: center; justify-content: center;
+  gap: 6px; padding: 16px; text-align: center; transition: border-color .15s, background .15s;
+}
+.drop:hover, .drop.over { border-color: var(--ink); background: #F1F6F4; }
+.drop.filled { border-style: solid; border-color: var(--ink); }
+.drop input[type="file"] { display: none; }
+.drop-title { font-weight: 600; }
+.drop-note { font-size: 13px; color: var(--muted); word-break: break-all; }
+.drop img { max-height: 130px; border-radius: 6px; margin-top: 6px; }
+
+/* ---------- เลือกโหมด ---------- */
+.modes { display: flex; flex-direction: column; gap: 10px; margin-bottom: 16px; }
+.mode {
+  display: flex; gap: 12px; align-items: flex-start; cursor: pointer;
+  border: 1px solid var(--border); border-radius: 10px; padding: 12px 14px; background: #FCFBF8;
+}
+.mode:has(input:checked) { border-color: var(--ink); background: #F1F6F4; }
+.mode input { margin-top: 4px; accent-color: var(--ink); }
+.mode strong { display: block; }
+.mode em { font-style: normal; font-size: 14px; color: var(--muted); }
+.mode.disabled { opacity: .55; }
+
+button.primary {
+  font: inherit; font-weight: 600; cursor: pointer;
+  background: var(--ink); color: #fff; border: none;
+  border-radius: 8px; padding: 12px 24px;
+}
+button.primary:hover:not(:disabled) { background: #26493F; }
+button.primary:disabled { background: var(--muted); cursor: progress; }
+
+/* ---------- ผลการตรวจ ---------- */
+.score-head { display: flex; justify-content: space-between; align-items: flex-start; gap: 16px; flex-wrap: wrap; }
+.score-head h2 { margin-bottom: 2px; }
+.score-head .sub { margin: 0; color: var(--muted); font-size: 14px; }
+.score-big { font-size: 34px; font-weight: 700; color: var(--ink); line-height: 1.1; }
+.score-max { font-size: 18px; color: var(--muted); font-weight: 400; margin-left: 4px; }
+
+.score-table { width: 100%; border-collapse: collapse; margin: 18px 0 4px; font-size: 15px; }
+.score-table th, .score-table td { text-align: left; padding: 10px 8px; border-bottom: 1px solid var(--border); vertical-align: top; }
+.score-table th { font-size: 13px; color: var(--muted); font-weight: 600; }
+.score-table .num { text-align: right; white-space: nowrap; }
+.score-table tr.flagged { background: var(--flag-bg); }
+.qid { font-weight: 600; }
+.qlabel { display: block; font-size: 13px; color: var(--muted); font-weight: 400; max-width: 230px; }
+.answer { max-width: 300px; }
+.reasons { margin: 6px 0 0; padding-left: 18px; font-size: 13px; color: var(--ochre); }
+.badge-flag {
+  display: inline-block; font-size: 12px; color: var(--ochre);
+  border: 1px solid var(--flag-border); border-radius: 999px; padding: 1px 8px; margin-top: 4px;
+}
+input.score-input {
+  font: inherit; width: 72px; text-align: right; padding: 6px 8px;
+  border: 1px solid var(--border); border-radius: 6px; background: #fff;
+}
+input.score-input.edited { border-color: var(--ochre); background: #FFFBF4; }
+
+.save-row { display: flex; align-items: center; gap: 14px; flex-wrap: wrap; margin-top: 16px; }
+
+/* ---------- กล่องข้อความ ---------- */
+.error-box, .ok-box, .warn-box {
+  border-radius: 8px; padding: 12px 14px; margin: 12px 0 0; font-size: 14px;
+}
+.error-box { background: #FBEDEB; border: 1px solid #E6C0BA; color: var(--error); }
+.ok-box { background: #EDF5F0; border: 1px solid #BEDCCB; color: var(--ok); }
+.warn-box { background: var(--flag-bg); border: 1px solid var(--flag-border); color: #7A4E17; }
+
+.status-panel ul { margin: 0 0 10px; padding-left: 20px; }
+.status-panel li { font-size: 14px; }
+
+@media (max-width: 620px) {
+  .score-table .qlabel, .answer { max-width: none; }
+  .topbar-inner { flex-direction: column; align-items: flex-start; }
+}

@@ -1,0 +1,277 @@
+"""
+เทสเว็บแอป (webapp/) + ตัวโหลด settings.json
+
+จุดที่ตั้งใจจับเป็นพิเศษ:
+  - /api/save ต้องเรียงคะแนนตามลำดับข้อในเฉลยเสมอ ไม่ใช่ตามลำดับที่เบราว์เซอร์ส่งมา
+    ถ้าพลาดตรงนี้คะแนนจะลงผิดช่องใน Google Sheets แบบเงียบ ๆ ไม่มี error ให้เห็น
+  - โหมดตรวจจริงต้องปฏิเสธเมื่อยังไม่ได้ตั้ง credentials ไม่ใช่เงียบ ๆ ถอยไปใช้ของปลอม
+    แล้วให้ครูเข้าใจผิดว่าคะแนนนี้มาจากลายมือจริง
+  - ไฟล์แนบชนิดที่ opencv อ่านไม่ได้ (.txt, .heic) ต้องถูกตีกลับพร้อมเหตุผล
+
+รัน: python tests/test_webapp.py
+"""
+
+from __future__ import annotations
+
+import csv
+import json
+import os
+import sys
+import tempfile
+from io import BytesIO
+from pathlib import Path
+
+sys.path.insert(0, os.path.join(os.path.dirname(__file__), ".."))
+
+from grading.config_loader import load_config
+from grading.console import enable_utf8_output
+from grading.pipeline import SubmissionResult, submission_to_sheet_row
+from grading.settings import DEFAULT_CLAUDE_MODEL, AppSettings, load_settings
+
+# บังคับ UTF-8 ก่อนพิมพ์ผล — กัน UnicodeEncodeError บน console ไทย (cp874)
+enable_utf8_output()
+
+PROJECT_ROOT = Path(__file__).resolve().parent.parent
+
+passed = 0
+failed = 0
+
+
+def check(name: str, condition: bool, note: str = "") -> None:
+    global passed, failed
+    suffix = f" — {note}" if note else ""
+    if condition:
+        passed += 1
+        print(f"  [ผ่าน] {name}{suffix}")
+    else:
+        failed += 1
+        print(f"  [ตก]  {name}{suffix}")
+
+
+# ============================================================
+# 1) grading/settings.py — ไม่ต้องพึ่ง flask
+# ============================================================
+print("ตัวโหลด settings.json")
+
+default_settings = load_settings(path=PROJECT_ROOT / "ไม่มีไฟล์นี้จริง.json")
+check("ไม่มีไฟล์ settings.json ก็ยังรันได้", default_settings.loaded_from is None)
+check("ค่าเริ่มต้นคือโหมด csv", default_settings.sheet_mode == "csv")
+check("ค่าเริ่มต้นไม่พร้อมตรวจจริง", not default_settings.real_mode_ready)
+check("โมเดลเริ่มต้นตรงกับ ClaudeSemanticGrader", default_settings.claude_model == DEFAULT_CLAUDE_MODEL)
+
+with tempfile.TemporaryDirectory() as tmpdir:
+    good = Path(tmpdir) / "settings.json"
+    good.write_text(
+        json.dumps(
+            {
+                "anthropic_api_key": "sk-ทดสอบ",
+                "claude_model": "claude-opus-5",
+                "sheet": {"mode": "google", "spreadsheet_id": ""},
+                "exam": {"answer_key": "config/answer_key_config.json"},
+            },
+            ensure_ascii=False,
+        ),
+        encoding="utf-8",
+    )
+    loaded = load_settings(good)
+    check("อ่านคีย์จากไฟล์ได้", loaded.anthropic_api_key == "sk-ทดสอบ")
+    check("llm_ready = จริง เมื่อมีคีย์", loaded.llm_ready)
+    check("ocr_ready = เท็จ เมื่อยังไม่มี credentials", not loaded.ocr_ready)
+    check("เปลี่ยนโมเดลได้จากไฟล์", loaded.claude_model == "claude-opus-5")
+    check(
+        "เตือนเมื่อเลือก google แต่ไม่ใส่ spreadsheet_id",
+        any("spreadsheet_id" in p for p in loaded.problems),
+        f"problems={loaded.problems}",
+    )
+
+    broken = Path(tmpdir) / "broken.json"
+    broken.write_text("{ นี่ไม่ใช่ JSON", encoding="utf-8")
+    loaded_broken = load_settings(broken)
+    check("ไฟล์เสียแล้วไม่ crash แต่เก็บปัญหาไว้", len(loaded_broken.problems) > 0)
+    check("ไฟล์เสียแล้วยังถอยไปใช้ค่า default ได้", loaded_broken.sheet_mode == "csv")
+
+    bad_mode = Path(tmpdir) / "badmode.json"
+    bad_mode.write_text(json.dumps({"sheet": {"mode": "ส่งเข้าไลน์"}}), encoding="utf-8")
+    loaded_bad = load_settings(bad_mode)
+    check("sheet.mode แปลก ๆ ถูกดันกลับเป็น csv", loaded_bad.sheet_mode == "csv")
+
+
+# ============================================================
+# 2) submission_to_sheet_row — ของเดิมต้องไม่เปลี่ยนพฤติกรรม
+# ============================================================
+print("\nsubmission_to_sheet_row (พารามิเตอร์ status ที่เพิ่มใหม่)")
+
+empty_submission = SubmissionResult(
+    student_name="ก", student_no="1", student_class="5/2", needs_review=True
+)
+row_default = submission_to_sheet_row(empty_submission)
+check("ไม่ส่ง status = ใช้ข้อความเดิมตาม needs_review", "ต้องตรวจสอบ" in row_default)
+row_custom = submission_to_sheet_row(empty_submission, status="ครูตรวจแล้ว")
+check("ส่ง status เองได้", "ครูตรวจแล้ว" in row_custom and "ต้องตรวจสอบ" not in row_custom)
+
+
+# ============================================================
+# 3) เว็บแอป — ต้องมี flask
+# ============================================================
+print("\nเว็บแอป (flask)")
+
+try:
+    import flask  # noqa: F401
+except ImportError:
+    # ใน CI ติดตั้ง requirements.txt ครบอยู่แล้ว ถ้า import ไม่ได้แปลว่ามีอะไรผิด
+    # ต้องให้ fail ไม่ใช่ข้ามเงียบ ๆ ไม่งั้นเทสจะ "เขียวเพราะไม่ได้รัน"
+    if os.environ.get("CI"):
+        check("import flask ได้ (CI ต้องติดตั้งครบ)", False, "ไม่พบโมดูล flask")
+        print(f"\nผ่าน {passed} ตก {failed}")
+        sys.exit(1)
+    print("  [ข้าม] ยังไม่ได้ติดตั้ง flask — `pip install -r requirements.txt` ก่อนถึงจะเทสส่วนนี้ได้")
+    print(f"\nผ่าน {passed} ตก {failed}")
+    sys.exit(1 if failed else 0)
+
+# ต้อง import หลังเช็ค flask ด้านบน ไม่งั้นเครื่องที่ยังไม่ได้ pip install
+# จะตายตั้งแต่บรรทัด import แทนที่จะได้ข้อความบอกวิธีแก้
+from webapp import create_app  # noqa: E402
+
+config = load_config(PROJECT_ROOT / "config" / "answer_key_config.json")
+
+with tempfile.TemporaryDirectory() as tmpdir:
+    csv_path = Path(tmpdir) / "ผลตรวจ.csv"
+    settings = AppSettings(csv_path=str(csv_path))
+    app = create_app(settings)
+    client = app.test_client()
+
+    # ---------- /api/status ----------
+    res = client.get("/api/status")
+    status = res.get_json()
+    check("/api/status ตอบ 200", res.status_code == 200)
+    check(
+        "/api/status ส่งรายการข้อครบตามเฉลย",
+        len(status["exam"]["questions"]) == len(config.questions),
+    )
+    check("/api/status บอกว่ายังตรวจจริงไม่ได้", status["ready"]["real"] is False)
+    check("/api/status บอกปลายทางที่จะบันทึก", "ผลตรวจ.csv" in status["sheet_target"])
+
+    # ---------- หน้าเว็บโหลดได้ ----------
+    res = client.get("/")
+    check("หน้าแรกโหลดได้", res.status_code == 200)
+    check("หน้าแรกมีปุ่มตรวจข้อสอบ", "ตรวจข้อสอบ" in res.get_data(as_text=True))
+
+    # ---------- /api/grade โหมดลองใช้งาน ----------
+    res = client.post(
+        "/api/grade",
+        data={
+            "mode": "demo",
+            "student_name": "ด.ช. ทดสอบ ใจดี",
+            "student_no": "12",
+            "student_class": "5/2",
+        },
+        content_type="multipart/form-data",
+    )
+    graded = res.get_json()
+    check("/api/grade โหมดลองใช้งานตอบ 200 โดยไม่ต้องมีรูป", res.status_code == 200)
+    check(
+        "ตรวจครบทุกข้อตามเฉลย",
+        len(graded["results"]) == len(config.questions),
+        f"ได้ {len(graded['results'])} ข้อ",
+    )
+    check("คะแนนเต็มตรงกับเฉลย", graded["max_total"] == config.total_score)
+    check("คะแนนรวมไม่เกินคะแนนเต็ม", 0 <= graded["total_score"] <= graded["max_total"])
+    check("บอกชัดว่าใช้ของปลอม", graded["mode"]["ocr"] == "mock" and graded["mode"]["llm"] == "mock")
+    check(
+        "เตือนว่าห้ามเอาคะแนนโหมดนี้ไปใช้",
+        any("ห้ามนำคะแนนไปใช้" in w for w in graded["warnings"]),
+    )
+    check(
+        "ส่งเหตุผลที่ต้องตรวจซ้ำมาให้ครูอ่าน",
+        any(r["flagged"] and r["flag_reasons"] for r in graded["results"]),
+    )
+
+    # ---------- /api/grade โหมดตรวจจริง ต้องถูกปฏิเสธ ----------
+    res = client.post("/api/grade", data={"mode": "real"}, content_type="multipart/form-data")
+    check("โหมดตรวจจริงที่ไม่แนบรูป ถูกตีกลับ", res.status_code == 400)
+    check("ตีกลับพร้อมข้อความไทย", "รูป" in res.get_json()["error"])
+
+    # ---------- ไฟล์แนบชนิดที่อ่านไม่ได้ ----------
+    res = client.post(
+        "/api/grade",
+        data={
+            "mode": "demo",
+            "page1": (BytesIO(b"this is not an image"), "คำตอบ.txt"),
+        },
+        content_type="multipart/form-data",
+    )
+    check("ไฟล์ .txt ถูกตีกลับ", res.status_code == 400)
+    res = client.post(
+        "/api/grade",
+        data={"mode": "demo", "page1": (BytesIO(b"\x00\x01"), "IMG_1234.heic")},
+        content_type="multipart/form-data",
+    )
+    check("ไฟล์ .heic ถูกตีกลับพร้อมบอกวิธีแก้", res.status_code == 400)
+    check("บอกให้แปลงเป็น jpg", "jpg" in res.get_json()["error"])
+
+    # ---------- /api/save ----------
+    # จงใจสลับลำดับข้อที่ส่งไป เพราะเบราว์เซอร์จะส่งมาแบบไหนก็ได้
+    # แล้วแก้คะแนนข้อแรกให้เต็ม เพื่อพิสูจน์ว่าคะแนนยังลงถูกช่องและสถานะเปลี่ยนถูกต้อง
+    first_q = config.questions[0]
+    payload_results = [
+        {
+            "question_id": r["question_id"],
+            "score": first_q.max_score if r["question_id"] == first_q.question_id else 0,
+            "student_answer": r["student_answer"],
+            "similarity_percent": r["similarity_percent"],
+            "flagged": r["flagged"],
+            "edited": r["question_id"] == first_q.question_id,
+        }
+        for r in reversed(graded["results"])
+    ]
+    res = client.post(
+        "/api/save",
+        json={"student": graded["student"], "results": payload_results},
+    )
+    saved = res.get_json()
+    check("/api/save ตอบ 200", res.status_code == 200, str(saved))
+    check("สถานะเป็น 'ครูตรวจแล้ว' เมื่อครูแก้คะแนน", saved["status"] == "ครูตรวจแล้ว")
+    check("คะแนนรวมคิดจากค่าที่ครูแก้", saved["total_score"] == first_q.max_score)
+
+    check("เขียนไฟล์ CSV ออกมาจริง", csv_path.exists())
+    with csv_path.open(encoding="utf-8-sig", newline="") as f:
+        rows = list(csv.reader(f))
+    header, data_row = rows[0], rows[1]
+    check("หัวตารางมี 3 คอลัมน์แรกเป็นข้อมูลนักเรียน", header[:3] == ["ชื่อ", "เลขที่", "ชั้น"])
+    check("จำนวนคอลัมน์ของหัวตารางกับแถวข้อมูลตรงกัน", len(header) == len(data_row))
+
+    # จุดสำคัญ: คะแนนของข้อแรกต้องอยู่ในคอลัมน์ของข้อแรก แม้จะส่งมาเป็นลำดับสุดท้าย
+    col = header.index(f"ข้อ {first_q.question_id}")
+    check(
+        "คะแนนลงถูกคอลัมน์แม้เบราว์เซอร์ส่งลำดับสลับ",
+        float(data_row[col]) == first_q.max_score,
+        f"คอลัมน์ {col} ได้ {data_row[col]}",
+    )
+    check("คอลัมน์สถานะบันทึกว่าครูตรวจแล้ว", "ครูตรวจแล้ว" in data_row)
+
+    # ---------- คะแนนเกินคะแนนเต็มต้องถูกหั่นลง ----------
+    res = client.post(
+        "/api/save",
+        json={
+            "student": {"name": "เกินเต็ม", "no": "99", "class": "5/2"},
+            "results": [
+                {"question_id": first_q.question_id, "score": 999, "edited": True},
+            ],
+        },
+    )
+    check("คะแนนเกินเต็มถูกหั่นลงเหลือเท่าคะแนนเต็มของข้อ", res.get_json()["total_score"] == first_q.max_score)
+
+    # ---------- คะแนนที่ไม่ใช่ตัวเลข ----------
+    res = client.post(
+        "/api/save",
+        json={
+            "student": {"name": "พิมพ์มั่ว"},
+            "results": [{"question_id": first_q.question_id, "score": "เต็ม"}],
+        },
+    )
+    check("คะแนนที่ไม่ใช่ตัวเลขถูกตีกลับ", res.status_code == 400)
+    check("บอกว่าข้อไหนพัง", first_q.question_id in res.get_json()["error"])
+
+
+print(f"\nผ่าน {passed} ตก {failed}")
+sys.exit(1 if failed else 0)

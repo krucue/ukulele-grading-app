@@ -1,0 +1,26 @@
+{
+  "_อ่านก่อน": "คัดลอกไฟล์นี้เป็น settings.json แล้วเติมค่าของจริง — settings.json ถูก .gitignore ไว้ ไม่หลุดขึ้น GitHub",
+
+  "_anthropic_api_key": "คีย์จาก console.anthropic.com ใช้ให้ Claude ตรวจข้อบรรยาย (ข้อ 4) ถ้าเว้นว่างจะใช้โหมดจำลอง",
+  "anthropic_api_key": "",
+
+  "_claude_model": "โมเดลที่ใช้ตรวจ ค่าเริ่มต้น claude-sonnet-4-6 · รุ่นปัจจุบันที่เลือกได้: claude-opus-5 (เก่งสุด) หรือ claude-sonnet-5",
+  "claude_model": "claude-sonnet-4-6",
+
+  "_google_credentials_path": "path เต็มของไฟล์ service account json ใช้อ่านลายมือด้วย Google Vision + เขียน Google Sheets",
+  "google_credentials_path": "",
+
+  "sheet": {
+    "_mode": "csv = บันทึกลงไฟล์ในเครื่อง (ไม่ต้องตั้งอะไรเลย) · google = บันทึกลง Google Sheets",
+    "mode": "csv",
+    "csv_path": "ผลตรวจ.csv",
+    "_spreadsheet_id": "รหัสยาว ๆ ใน URL ของ Sheet: docs.google.com/spreadsheets/d/<ตรงนี้>/edit",
+    "spreadsheet_id": ""
+  },
+
+  "exam": {
+    "_อ่านก่อน": "ปกติไม่ต้องแก้ 2 บรรทัดนี้ นอกจากจะย้ายไฟล์เฉลยไปที่อื่น",
+    "answer_key": "config/answer_key_config.json",
+    "regions": "config/regions.json"
+  }
+}

@@ -26,6 +26,10 @@ token.json
 .env.*
 !.env.example
 
+# ---------- ค่าตั้งต้นของเครื่องครู: มี API key อยู่ข้างใน ----------
+settings.json
+!settings.example.json
+
 # ---------- ข้อมูลนักเรียน: ภาพกระดาษคำตอบมีชื่อ-ลายมือเด็ก ----------
 # เก็บไว้นอก repo เสมอ ไม่มีภาพข้อสอบไฟล์ไหนที่ต้อง commit อยู่แล้ว
 *.jpg
@@ -38,6 +42,8 @@ token.json
 # CsvDryRunWriter (ค่าเริ่มต้นของ grade_exam.py --sheet csv และ demo/run_demo.py)
 results_dry_run.csv
 results*.csv
+# ค่าเริ่มต้นของเว็บแอป (settings.json -> sheet.csv_path)
+ผลตรวจ*.csv
 # grade_exam.py --keep-aligned
 _aligned_page*.png
 # tools/calibrate_regions.py

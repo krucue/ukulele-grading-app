@@ -1,6 +1,9 @@
 # Core logic (similarity.py, scorer.py, config_loader.py, pipeline.py)
 # ไม่มี dependency ภายนอก — รัน demo/test ได้ทันทีโดยไม่ต้องติดตั้งอะไรในไฟล์นี้เลย
 
+# เว็บแอป (web_app.py + webapp/) — ครูเปิดใช้งานผ่านเบราว์เซอร์ ไม่ต้องแตะ terminal
+flask>=3.0.0
+
 # ขั้นตอนปรับแนว/ตัดภาพ (align.py, regions.py) และเครื่องมือ calibrate
 opencv-python-headless>=4.9.0
 numpy>=1.26.0

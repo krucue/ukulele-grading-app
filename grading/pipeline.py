@@ -73,14 +73,18 @@ def submission_to_sheet_row(
     submission: SubmissionResult,
     timestamp: str | None = None,
     image_url: str = "",
+    status: str | None = None,
 ) -> list:
+    """status: ระบุเองได้เมื่อครูตรวจซ้ำในเว็บแอปแล้ว (เช่น "ครูตรวจแล้ว")
+    ไม่ระบุ = คิดจาก needs_review ตามเดิม
+    """
     ts = timestamp or datetime.datetime.now().astimezone().isoformat(timespec="seconds")
     row: list = [submission.student_name, submission.student_no, submission.student_class]
     row += [r.score for r in submission.results]
     row += [
         submission.total_score,
         submission.max_total,
-        "ต้องตรวจสอบ" if submission.needs_review else "ผ่านอัตโนมัติ",
+        status or ("ต้องตรวจสอบ" if submission.needs_review else "ผ่านอัตโนมัติ"),
         ts,
         image_url,
     ]

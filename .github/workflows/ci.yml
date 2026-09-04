@@ -65,5 +65,8 @@ jobs:
       - name: เทสสัญญากับ SDK ตัวจริง (opencv + anthropic)
         run: python tests/test_sdk_contract.py
 
+      - name: เทสเว็บแอป + ตัวโหลด settings.json
+        run: python tests/test_webapp.py
+
       - name: รัน demo ทั้ง pipeline
         run: python demo/run_demo.py
