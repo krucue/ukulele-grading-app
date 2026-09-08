@@ -107,7 +107,8 @@ grading_app/
 │   ├── test_pdf_pages.py               # แตกหน้าจาก PDF สแกน (หมุนตาม /Rotate, PDF ที่ไม่มีรูปฝัง, ใส่รหัสผ่าน)
 │   ├── test_real_integrations_mocked.py # ปลอม SDK ของ Claude/Google เพื่อเช็ค request/response โดยไม่ต้องมี credentials จริง
 │   ├── test_sdk_contract.py          # ใช้ SDK ตัวจริง (ไม่ปลอมโมดูล) จับกรณีไลบรารีอัปเวอร์ชันแล้วเปลี่ยน API
-│   └── test_webapp.py                # เว็บแอปทุก endpoint + settings.py (จับคะแนนลงผิดคอลัมน์)
+│   ├── test_webapp.py                # เว็บแอปทุก endpoint + settings.py (จับคะแนนลงผิดคอลัมน์)
+│   └── test_webapp_ui.mjs            # หน้าเว็บฝั่งเบราว์เซอร์ด้วย jsdom (กันบันทึกซ้ำ, ล้างของคนเก่า)
 ├── requirements.txt
 ├── ruff.toml           # ล็อกชุดกฎ lint ไว้ ไม่ให้ผลตรวจเปลี่ยนตามเวอร์ชัน ruff
 ├── .gitignore          # กัน credentials / settings.json / ภาพกระดาษคำตอบของนักเรียน / ไฟล์ผลลัพธ์
@@ -132,7 +133,16 @@ python tests/test_regions_and_pipeline.py       # crop ต่อข้อ (เ�
 python tests/test_pdf_pages.py                 # แตกหน้าจาก PDF ที่สแกนมา
 python tests/test_real_integrations_mocked.py   # เช็ค request/response ของ Claude/Google API แบบไม่ต้องมี credentials
 python tests/test_sdk_contract.py               # ยิงผ่าน SDK ตัวจริงเข้า server ปลอมใน localhost — จับ API ที่เปลี่ยนตอนอัปไลบรารี
+python tests/test_webapp.py                     # เว็บแอปทุก endpoint + ตัวโหลด settings.json
 python demo/run_demo.py                          # จำลองตรวจนักเรียน 1 คนครบทุกข้อ แล้วบันทึกเป็น CSV
+```
+
+เทสฝั่งหน้าเว็บแยกออกมาเพราะรันด้วย node ไม่ใช่ python **ต้องมีเฉพาะตอนพัฒนาเท่านั้น —
+ตัวแอปที่ครูเปิดใช้ไม่ต้องมี node ไม่มี build step ไม่พึ่ง CDN เหมือนเดิมทุกอย่าง**
+
+```bash
+npm install                    # ครั้งแรกครั้งเดียว ลง jsdom เป็น devDependency
+node tests/test_webapp_ui.mjs  # หรือ npm test
 
 # หรือรันสคริปต์หลักตัวจริงเลย (ด้วยภาพถ่าย 2 หน้า + คำตอบจำลอง)
 python grade_exam.py --page1 <รูปหน้า1.jpg> --page2 <รูปหน้า2.jpg> \
@@ -196,12 +206,13 @@ python -m ruff check . --fix   # แก้อัตโนมัติเท่�
 
 ## CI อัตโนมัติ
 
-`.github/workflows/ci.yml` รันทุกครั้งที่ push เข้า `main` และทุก pull request รวม 5 job:
+`.github/workflows/ci.yml` รันทุกครั้งที่ push เข้า `main` และทุก pull request รวม 6 job:
 
 | job | ทำอะไร |
 |---|---|
 | `ruff` | `ruff check .` ด้วย ruff เวอร์ชันที่ปักไว้ (0.16.5) ให้ผลตรงกับที่รันในเครื่อง |
-| `เทส` × 4 | รันเทสทั้ง 5 ชุด + `demo/run_demo.py` บน `ubuntu-latest` และ `windows-latest` × Python `3.10` และ `3.13` |
+| `เทสหน้าเว็บ (jsdom)` | `node tests/test_webapp_ui.mjs` บน `ubuntu-latest` อย่างเดียว — ดูพฤติกรรม DOM ล้วน ไม่แตะไฟล์ระบบ จึงไม่มีอะไรต่างระหว่าง OS |
+| `เทส` × 4 | รันเทส Python ทั้ง 6 ชุด + `demo/run_demo.py` บน `ubuntu-latest` และ `windows-latest` × Python `3.10` และ `3.13` |
 
 เหตุผลที่ต้องเทสบน **Windows** ด้วยไม่ใช่ใส่เผื่อ — โปรเจกต์นี้เคยมีบั๊ก 2 ตัวที่โผล่เฉพาะ
 บน Windows เท่านั้น: `cv2.imwrite()` เขียนไฟล์ลง `/tmp/` ไม่สำเร็จโดยไม่แจ้ง error
@@ -209,7 +220,14 @@ python -m ruff check . --fix   # แก้อัตโนมัติเท่�
 
 เหตุผลที่ต้องเทส **Python 3.10** — เป็นเวอร์ชันขั้นต่ำที่ README ประกาศไว้ ต้องพิสูจน์ว่ายังจริง
 
-สคริปต์เทสทุกไฟล์เรียก `sys.exit(1)` เมื่อมีเคสล้มเหลว CI จึงจับได้จริงไม่ใช่เขียวหลอก
+เหตุผลที่ต้องมีเทส **ฝั่งหน้าเว็บ** ทั้งที่โปรเจกต์ตั้งใจไม่พึ่ง build step — `app.js`
+ไม่ได้เป็นแค่เปลือกแสดงผลแล้ว มันถือกติกาที่เทสฝั่ง Python มองไม่เห็นเลยเพราะไม่มี request
+ยิงออกไป: ตัวกันกดปุ่มบันทึกซ้ำ (กดสองที = นักเรียนคนเดียวมี 2 แถวในชีต ไปโผล่ตอนรวมคะแนน
+ปลายภาค ไม่ใช่ตอนตรวจ) และการล้างข้อมูลคนเก่าตอนกด "ตรวจนักเรียนคนต่อไป" (ล้างไม่ครบ =
+กระดาษคนก่อนติดไปกับคนใหม่)
+
+สคริปต์เทสทุกไฟล์เรียก `sys.exit(1)` (ฝั่ง node ใช้ `process.exit(1)`) เมื่อมีเคสล้มเหลว
+CI จึงจับได้จริงไม่ใช่เขียวหลอก
 
 `.github/dependabot.yml` ตรวจเวอร์ชันใหม่ให้เดือนละครั้ง แล้วเปิด PR มาให้เอง —
 ทั้ง GitHub Actions ใน workflow และไลบรารีใน `requirements.txt` รวมเป็น PR เดียวต่อกลุ่ม

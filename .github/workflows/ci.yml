@@ -26,6 +26,27 @@ jobs:
       - name: ตรวจ lint
         run: ruff check . --output-format=github
 
+  ui:
+    name: เทสหน้าเว็บ (jsdom)
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v7
+
+      - uses: actions/setup-node@v6
+        with:
+          node-version: "22"
+          cache: npm
+
+      # ci ไม่ใช่ install — ติดตั้งตาม package-lock.json เป๊ะ ๆ ผลใน CI จะได้
+      # เหมือนที่รันในเครื่อง และไม่แอบยกเวอร์ชัน jsdom เองระหว่างทาง
+      - name: ติดตั้ง jsdom
+        run: npm ci
+
+      # รันบน ubuntu อย่างเดียวพอ — เทสนี้ดูพฤติกรรม DOM ล้วน ไม่แตะไฟล์ระบบ
+      # จึงไม่มีอะไรต่างระหว่าง OS ต่างจากเทสฝั่ง Python ที่ต้องรันบน Windows ด้วย
+      - name: เทสฝั่งหน้าเว็บ (กันบันทึกซ้ำ + ล้างของคนเก่า)
+        run: node tests/test_webapp_ui.mjs
+
   test:
     name: เทส (${{ matrix.os }} / Python ${{ matrix.python-version }})
     runs-on: ${{ matrix.os }}

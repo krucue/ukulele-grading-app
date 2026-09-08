@@ -20,6 +20,23 @@ updates:
       actions:
         patterns: ["*"]
 
+  # ---------- ไลบรารี node ใน package.json (เทสหน้าเว็บเท่านั้น) ----------
+  # มีแค่ jsdom ตัวเดียว และเป็น devDependency ที่ไม่ได้ไปอยู่ในตัวแอปที่ครูใช้
+  # ปักเวอร์ชันไว้ใน package-lock.json ให้ CI ติดตั้งได้เหมือนเดิมทุกครั้ง
+  # การอัปจึงเสี่ยงแค่กับเทส ไม่เสี่ยงกับคะแนนนักเรียน — ปล่อยให้อัปได้ตามปกติ
+  - package-ecosystem: npm
+    directory: /
+    schedule:
+      interval: monthly
+      timezone: Asia/Bangkok
+    open-pull-requests-limit: 5
+    labels: [dependencies, javascript]
+    commit-message:
+      prefix: "deps"
+    groups:
+      node-packages:
+        patterns: ["*"]
+
   # ---------- ไลบรารี Python ใน requirements.txt ----------
   # หมายเหตุ: requirements.txt ใช้ข้อจำกัดแบบ ">=" ไม่ได้ปักเวอร์ชันตายตัว
   # เครื่องที่ pip install ก็ได้ตัวล่าสุดอยู่แล้ว การยกพื้นขั้นต่ำจึงแทบไม่ได้อะไร

@@ -1,0 +1,12 @@
+{
+  "name": "ukulele-grading-app-ui-tests",
+  "private": true,
+  "description": "เทสฝั่งหน้าเว็บ (webapp/static/app.js) ด้วย jsdom — ใช้ตอนพัฒนาเท่านั้น ตัวแอปที่ครูเปิดใช้ไม่ต้องมี node และไม่มี build step",
+  "type": "module",
+  "scripts": {
+    "test": "node tests/test_webapp_ui.mjs"
+  },
+  "devDependencies": {
+    "jsdom": "^29.1.1"
+  }
+}
