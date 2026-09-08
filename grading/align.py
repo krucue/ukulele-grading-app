@@ -14,6 +14,7 @@
 
 from __future__ import annotations
 
+import os
 from dataclasses import dataclass
 
 import cv2
@@ -98,11 +99,44 @@ def align_and_crop(image: np.ndarray) -> AlignResult:
     return AlignResult(image=warped, corners_found=True)
 
 
+def imread_unicode(path: str):
+    """อ่านภาพแบบรองรับ path ภาษาไทย — คืน None ถ้าอ่านไม่ได้ (เหมือน cv2.imread)
+
+    ทำไมไม่ใช้ cv2.imread ตรง ๆ: บน Windows ตัว imread ส่ง path ต่อให้ C++ ที่แปลง
+    เป็น encoding ของระบบ (cp874 สำหรับไทย) ถ้า path มีอักษรที่แปลงไม่ได้จะคืน None
+    เฉย ๆ เหมือนไฟล์ไม่มีอยู่ ไม่มีอะไรบอกสาเหตุ — ซึ่งเกิดขึ้นแน่นอนกับครูที่ตั้งชื่อ
+    ผู้ใช้ Windows เป็นภาษาไทย เพราะโฟลเดอร์ temp จะอยู่ใต้ชื่อผู้ใช้นั้น และกับครูที่
+    เก็บรูปไว้ในโฟลเดอร์ชื่อไทย อ่านเป็น bytes ด้วย Python แล้วให้ opencv decode ต่อ
+    จึงไม่ต้องส่ง path ให้ opencv เลย
+    """
+    try:
+        data = np.fromfile(path, dtype=np.uint8)
+    except OSError:
+        return None
+    if data.size == 0:
+        return None
+    return cv2.imdecode(data, cv2.IMREAD_COLOR)
+
+
+def imwrite_unicode(path: str, image) -> bool:
+    """เขียนภาพแบบรองรับ path ภาษาไทย — คู่กับ imread_unicode ด้วยเหตุผลเดียวกัน"""
+    suffix = os.path.splitext(path)[1] or ".png"
+    ok, buffer = cv2.imencode(suffix, image)
+    if not ok:
+        return False
+    try:
+        buffer.tofile(path)
+    except OSError:
+        return False
+    return True
+
+
 def align_and_crop_file(input_path: str, output_path: str) -> AlignResult:
     """เวอร์ชันสะดวกใช้: อ่านจากไฟล์ เขียนผลลัพธ์ลงไฟล์ คืน AlignResult เหมือนกัน"""
-    image = cv2.imread(input_path)
+    image = imread_unicode(input_path)
     if image is None:
         raise FileNotFoundError(f"เปิดภาพไม่ได้: {input_path}")
     result = align_and_crop(image)
-    cv2.imwrite(output_path, result.image)
+    if not imwrite_unicode(output_path, result.image):
+        raise OSError(f"เขียนภาพไม่ได้: {output_path}")
     return result

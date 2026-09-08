@@ -7,13 +7,19 @@ from __future__ import annotations
 
 import os
 import sys
+import tempfile
 
 sys.path.insert(0, os.path.join(os.path.dirname(__file__), ".."))
 
 import cv2
 import numpy as np
 
-from grading.align import REFERENCE_HEIGHT, REFERENCE_WIDTH, align_and_crop
+from grading.align import (
+    REFERENCE_HEIGHT,
+    REFERENCE_WIDTH,
+    align_and_crop,
+    align_and_crop_file,
+)
 from grading.console import enable_utf8_output
 
 # บังคับ UTF-8 ก่อนพิมพ์ผล — กัน UnicodeEncodeError บน console ไทย (cp874)
@@ -67,6 +73,34 @@ blank = np.full((600, 400, 3), (128, 128, 128), dtype=np.uint8)  # ภาพส�
 result = align_and_crop(blank)
 check("ไม่เจอขอบ -> corners_found = False (แต่ยังคืนภาพ ไม่ error)", result.corners_found is False)
 check("ไม่เจอขอบ -> ยัง resize เป็นขนาดอ้างอิงให้เสมอ", result.image.shape == (REFERENCE_HEIGHT, REFERENCE_WIDTH, 3))
+
+# ครูไทยจำนวนมากตั้งชื่อผู้ใช้ Windows เป็นภาษาไทย ทำให้โฟลเดอร์ temp ทั้งอันมี
+# อักษรไทยอยู่ใน path — cv2.imread/imwrite บน Windows จะคืน None เงียบ ๆ ตรงนั้น
+# แล้วเว็บแอปจะฟ้องแค่ "เปิดภาพไม่ได้" โดยครูไม่มีทางเดาถูกว่าเป็นเพราะชื่อโฟลเดอร์
+print("\nalign_and_crop_file — path ที่มีภาษาไทย (ชื่อผู้ใช้ Windows เป็นไทย)")
+with tempfile.TemporaryDirectory() as tmpdir:
+    thai_dir = os.path.join(tmpdir, "โฟลเดอร์ของครู")
+    os.makedirs(thai_dir)
+    in_path = os.path.join(thai_dir, "กระดาษคำตอบ หน้า ๑.png")
+    out_path = os.path.join(thai_dir, "ปรับแนวแล้ว.png")
+
+    # เขียนไฟล์ต้นทางผ่าน Python ไม่ใช่ opencv เพื่อให้แน่ใจว่าไฟล์มีอยู่จริง
+    # ถ้าเทสตกทีหลัง จะได้รู้ว่าตกที่ขาอ่าน ไม่ใช่เพราะเขียนไม่ออกตั้งแต่แรก
+    ok, buffer = cv2.imencode(".png", make_mock_photo(5))
+    buffer.tofile(in_path)
+
+    try:
+        result = align_and_crop_file(in_path, out_path)
+    except Exception as exc:  # noqa: BLE001 — path ไทยต้องอ่านได้ ไม่ใช่โยน error
+        check(f"อ่านภาพจาก path ภาษาไทยได้ (ได้ {type(exc).__name__}: {exc})", False)
+    else:
+        check("อ่านภาพจาก path ภาษาไทยได้", result.corners_found is True)
+        check("เขียนภาพลง path ภาษาไทยได้", os.path.getsize(out_path) > 0)
+        check(
+            "อ่านภาพที่เขียนลง path ภาษาไทยกลับมาได้",
+            align_and_crop_file(out_path, out_path).image.shape
+            == (REFERENCE_HEIGHT, REFERENCE_WIDTH, 3),
+        )
 
 print(f"\n{'='*40}\nรวม: ผ่าน {passed} / ล้มเหลว {failed}\n{'='*40}")
 if failed:
