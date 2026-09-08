@@ -7,6 +7,6 @@
     "test": "node tests/test_webapp_ui.mjs"
   },
   "devDependencies": {
-    "jsdom": "^29.1.1"
+    "jsdom": "^30.0.1"
   }
 }
