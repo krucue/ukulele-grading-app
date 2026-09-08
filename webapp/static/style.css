@@ -75,6 +75,16 @@ input[type="text"]:focus, input[type="number"]:focus { outline: 2px solid var(--
 .drop-title { font-weight: 600; }
 .drop-note { font-size: 13px; color: var(--muted); word-break: break-all; }
 .drop img { max-height: 130px; border-radius: 6px; margin-top: 6px; }
+.drop-pdf { min-height: 96px; }
+
+/* เส้นคั่น "หรือ" — บอกให้ชัดว่าเลือกทางเดียว ไม่ใช่ต้องใส่ทั้งสองอย่าง */
+.or-line {
+  display: flex; align-items: center; gap: 12px;
+  margin: 16px 0 10px; color: var(--muted); font-size: 13px;
+}
+.or-line::before, .or-line::after {
+  content: ""; flex: 1; height: 1px; background: var(--border);
+}
 
 /* ---------- เลือกโหมด ---------- */
 .modes { display: flex; flex-direction: column; gap: 10px; margin-bottom: 16px; }
@@ -95,6 +105,14 @@ button.primary {
 }
 button.primary:hover:not(:disabled) { background: #26493F; }
 button.primary:disabled { background: var(--muted); cursor: progress; }
+
+/* ปุ่มรอง — ใช้กับ "ตรวจนักเรียนคนต่อไป" ที่โผล่มาแทนปุ่มบันทึกหลังบันทึกสำเร็จ */
+button.secondary {
+  font: inherit; font-weight: 600; cursor: pointer;
+  background: #fff; color: var(--ink); border: 1px solid var(--ink);
+  border-radius: 8px; padding: 12px 24px;
+}
+button.secondary:hover { background: #F1F6F4; }
 
 /* ---------- ผลการตรวจ ---------- */
 .score-head { display: flex; justify-content: space-between; align-items: flex-start; gap: 16px; flex-wrap: wrap; }

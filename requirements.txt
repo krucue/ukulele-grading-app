@@ -4,6 +4,12 @@
 # เว็บแอป (web_app.py + webapp/) — ครูเปิดใช้งานผ่านเบราว์เซอร์ ไม่ต้องแตะ terminal
 flask>=3.0.0
 
+# แตกหน้าจากไฟล์ PDF ที่สแกนมา (pdf_pages.py) — เครื่องสแกนกับแอปสแกนบนมือถือ
+# คายไฟล์ออกมาเป็น PDF ไฟล์เดียวจบ ไม่ใช่ .jpg แยกหน้า
+# เลือก pypdf เพราะเป็น pure-python สัญญาอนุญาต BSD ไม่ต้องลงไบนารีนอก pip
+# (pymupdf เร็วกว่าแต่เป็น AGPL, pdf2image ต้องลง poppler แยกเอง)
+pypdf>=5.0.0
+
 # ขั้นตอนปรับแนว/ตัดภาพ (align.py, regions.py) และเครื่องมือ calibrate
 opencv-python-headless>=4.9.0
 numpy>=1.26.0

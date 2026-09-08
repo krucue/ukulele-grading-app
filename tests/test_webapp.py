@@ -209,6 +209,115 @@ with tempfile.TemporaryDirectory() as tmpdir:
     check("ไฟล์ .heic ถูกตีกลับพร้อมบอกวิธีแก้", res.status_code == 400)
     check("บอกให้แปลงเป็น jpg", "jpg" in res.get_json()["error"])
 
+    # ---------- อัปโหลดไฟล์ PDF ที่สแกนมา ----------
+    # เครื่องสแกนคายไฟล์ออกมาเป็น PDF ไฟล์เดียวจบทั้ง 2 หน้า ครูต้องใส่ของนั้นได้เลย
+    res = client.post(
+        "/api/grade",
+        data={"mode": "demo", "page1": (BytesIO(b"%PDF-1.4"), "สแกน.pdf")},
+        content_type="multipart/form-data",
+    )
+    check("ใส่ .pdf ผิดช่อง (ช่องรูป) ถูกตีกลับ", res.status_code == 400)
+    check(
+        "บอกให้ไปใช้ช่องอัปโหลด PDF แทน",
+        "ช่องอัปโหลด PDF" in res.get_json()["error"],
+        res.get_json()["error"],
+    )
+
+    res = client.post(
+        "/api/grade",
+        data={"mode": "demo", "pdf": (BytesIO(b"not-a-pdf"), "รูป.jpg")},
+        content_type="multipart/form-data",
+    )
+    check("ใส่รูปผิดช่อง (ช่อง PDF) ถูกตีกลับ", res.status_code == 400)
+
+    try:
+        from PIL import Image
+        from pypdf import PdfWriter
+    except ImportError as exc:
+        if os.environ.get("CI"):
+            check("import pypdf/Pillow ได้ (CI ต้องติดตั้งครบ)", False, str(exc))
+        else:
+            print(f"  [ข้าม] ยังไม่ได้ติดตั้ง pypdf/Pillow ({exc}) — ข้ามเทสอัปโหลด PDF")
+    else:
+        # Pillow ลงทะเบียนตัวเขียน JPEG แบบ lazy — ต้องเรียก init() ก่อนเซฟเป็น PDF
+        Image.init()
+
+        def scan_pdf_bytes(sizes):
+            """ไฟล์ PDF ที่หน้าละ 1 รูปเต็มหน้า — เลียนแบบของที่ออกจากเครื่องสแกน"""
+            buf = BytesIO()
+            images = [Image.new("RGB", size, (240, 238, 230)) for size in sizes]
+            images[0].save(buf, format="PDF", save_all=True, append_images=images[1:])
+            return BytesIO(buf.getvalue())
+
+        res = client.post(
+            "/api/grade",
+            data={
+                "mode": "demo",
+                "student_name": "ด.ญ. สแกนมา ทั้งไฟล์",
+                "pdf": (scan_pdf_bytes([(620, 877), (620, 877)]), "เอกสารที่สแกน.pdf"),
+            },
+            content_type="multipart/form-data",
+        )
+        check("อัปโหลด PDF สแกน 2 หน้า ตรวจผ่าน", res.status_code == 200, res.get_data(as_text=True)[:200])
+        if res.status_code == 200:
+            check("ตรวจครบทุกข้อจาก PDF", len(res.get_json()["results"]) == len(config.questions))
+
+        # ไฟล์ชั่วคราวที่แตกจาก PDF มีลายมือนักเรียนอยู่ ห้ามค้างใน temp หลังตอบกลับ
+        # เช็คทั้งโฟลเดอร์งานของ request (ชื่อขึ้นต้นตามที่ webapp/app.py ตั้งไว้)
+        # และชื่อไฟล์แบบเก่าที่เคยวางไว้ใน temp กลาง เผื่อ regress กลับไปทางเดิม
+        leftovers = [
+            name
+            for name in os.listdir(tempfile.gettempdir())
+            if name.startswith(("ตรวจข้อสอบ_", "_pdf_page", "_web_aligned_page"))
+        ]
+        check("ลบโฟลเดอร์งานที่แตกจาก PDF ทิ้งหลังตรวจเสร็จ", leftovers == [], str(leftovers))
+
+        res = client.post(
+            "/api/grade",
+            data={
+                "mode": "demo",
+                "pdf": (scan_pdf_bytes([(620, 877)]), "สแกนหน้าเดียว.pdf"),
+            },
+            content_type="multipart/form-data",
+        )
+        check("PDF ที่มีไม่ครบ 2 หน้า ถูกตีกลับ", res.status_code == 400)
+        check("บอกว่าไฟล์นั้นมีกี่หน้า", "1 หน้า" in res.get_json()["error"], res.get_json()["error"])
+
+        # PDF ที่พิมพ์จากโปรแกรมเอกสาร — ไม่มีรูปฝังอยู่ ตรวจไม่ได้ ต้องบอกสาเหตุ
+        writer = PdfWriter()
+        writer.add_blank_page(width=620, height=877)
+        writer.add_blank_page(width=620, height=877)
+        text_pdf = BytesIO()
+        writer.write(text_pdf)
+        res = client.post(
+            "/api/grade",
+            data={"mode": "demo", "pdf": (BytesIO(text_pdf.getvalue()), "พิมพ์จากเวิร์ด.pdf")},
+            content_type="multipart/form-data",
+        )
+        check("PDF ที่ไม่ได้สแกนมา (ไม่มีรูปฝัง) ถูกตีกลับ", res.status_code == 400)
+        check(
+            "บอกว่าต้องใช้ไฟล์ที่สแกนมา",
+            "ไม่ใช่ไฟล์ที่สแกนมา" in res.get_json()["error"],
+            res.get_json()["error"],
+        )
+
+        # ใส่มาทั้ง PDF และรูปแยกหน้า = ต้องไม่เดาว่าครูหมายถึงอันไหน
+        res = client.post(
+            "/api/grade",
+            data={
+                "mode": "demo",
+                "pdf": (scan_pdf_bytes([(620, 877), (620, 877)]), "สแกน.pdf"),
+                "page1": (scan_pdf_bytes([(620, 877)]), "หน้า1.jpg"),
+            },
+            content_type="multipart/form-data",
+        )
+        check("ใส่มาทั้ง PDF และรูปแยกหน้า ถูกตีกลับ ไม่เดาให้", res.status_code == 400)
+        check(
+            "บอกให้เลือกอย่างใดอย่างหนึ่ง",
+            "อย่างใดอย่างหนึ่ง" in res.get_json()["error"],
+            res.get_json()["error"],
+        )
+
     # ---------- /api/save ----------
     # จงใจสลับลำดับข้อที่ส่งไป เพราะเบราว์เซอร์จะส่งมาแบบไหนก็ได้
     # แล้วแก้คะแนนข้อแรกให้เต็ม เพื่อพิสูจน์ว่าคะแนนยังลงถูกช่องและสถานะเปลี่ยนถูกต้อง

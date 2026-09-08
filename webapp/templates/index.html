@@ -45,7 +45,18 @@
     </section>
 
     <section class="panel">
-      <h2><span class="step">2</span> รูปกระดาษคำตอบ</h2>
+      <h2><span class="step">2</span> กระดาษคำตอบ</h2>
+      <p class="hint">สแกนมาเป็น PDF ไฟล์เดียวก็ใส่ได้เลย หรือถ่ายรูปแยกหน้าก็ได้ — เลือกอย่างใดอย่างหนึ่ง</p>
+
+      <div class="drops">
+        <label class="drop drop-pdf" id="dropPdf">
+          <input type="file" id="pdfFile" accept="application/pdf,.pdf">
+          <span class="drop-title">ไฟล์สแกน PDF (ทั้ง 2 หน้าในไฟล์เดียว)</span>
+          <span class="drop-note">ยังไม่ได้เลือกไฟล์</span>
+        </label>
+      </div>
+
+      <p class="or-line"><span>หรือถ่ายรูปแยกทีละหน้า</span></p>
       <p class="hint">ลากรูปมาวางในกรอบ หรือคลิกเพื่อเลือกไฟล์ — รองรับ .jpg .png (ไม่รองรับ .heic จาก iPhone ต้องแปลงก่อน)</p>
       <div class="drops">
         <label class="drop" id="drop1">
@@ -113,9 +124,11 @@
 
     <div class="save-row">
       <button type="button" class="primary" id="saveBtn">บันทึกคะแนน</button>
+      <button type="button" class="secondary" id="nextBtn" hidden>ตรวจนักเรียนคนต่อไป</button>
       <span class="hint" id="saveTarget"></span>
     </div>
     <p class="ok-box" id="saveOk" hidden></p>
+    <p class="warn-box" id="saveWarn" hidden></p>
     <p class="error-box" id="saveError" hidden></p>
   </section>
 

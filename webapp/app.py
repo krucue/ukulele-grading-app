@@ -10,9 +10,9 @@ HTTP request <-> การเรียก pipeline เดิม ไม่มี�
 
 from __future__ import annotations
 
-import contextlib
 import json
 import os
+import shutil
 import tempfile
 from pathlib import Path
 
@@ -22,6 +22,7 @@ from grading.align import align_and_crop_file
 from grading.config_loader import ExamConfig, load_config
 from grading.llm_grader import MockSemanticGrader
 from grading.ocr import MockOcrProvider, OcrResult
+from grading.pdf_pages import PdfExtractError, extract_scanned_pages
 from grading.pipeline import (
     SubmissionResult,
     grade_submission,
@@ -38,50 +39,89 @@ PROJECT_ROOT = Path(__file__).resolve().parent.parent
 # ตัดออกตั้งแต่ต้นทางดีกว่าปล่อยให้ไปตายตอน cv2.imread คืน None แบบไม่บอกสาเหตุ
 ALLOWED_IMAGE_SUFFIXES = {".jpg", ".jpeg", ".png", ".bmp", ".webp", ".tif", ".tiff"}
 
-MAX_UPLOAD_BYTES = 25 * 1024 * 1024  # รูปจากมือถือปกติ 3-8 MB ต่อหน้า
+# เครื่องสแกนและแอปสแกนบนมือถือคายไฟล์ออกมาเป็น PDF ไฟล์เดียวจบทั้ง 2 หน้า
+# ครูจึงอัปโหลดของที่สแกนมาได้เลย ไม่ต้องไปหาโปรแกรมแปลงเป็นรูปก่อน
+ALLOWED_PDF_SUFFIXES = {".pdf"}
+
+MAX_UPLOAD_BYTES = 25 * 1024 * 1024  # รูปจากมือถือปกติ 3-8 MB ต่อหน้า, PDF สแกน 2-10 MB
 
 
 class GradingError(Exception):
     """ข้อผิดพลาดที่อยากให้ครูเห็นเป็นข้อความไทย ไม่ใช่ traceback"""
 
 
-def _save_upload(file_storage, page_number: int) -> str:
-    """เขียนไฟล์ที่อัปโหลดลง temp แล้วคืน path — ไม่เชื่อชื่อไฟล์ที่เบราว์เซอร์ส่งมา"""
+def _save_upload(file_storage, page_number: int, work_dir: str) -> str:
+    """เขียนรูปที่อัปโหลดลงโฟลเดอร์งาน แล้วคืน path — ไม่เชื่อชื่อไฟล์ที่เบราว์เซอร์ส่งมา"""
     suffix = Path(file_storage.filename or "").suffix.lower()
     if suffix not in ALLOWED_IMAGE_SUFFIXES:
         allowed = " ".join(sorted(ALLOWED_IMAGE_SUFFIXES))
         shown = suffix or "ไม่ทราบชนิด"
         raise GradingError(
             f"หน้า {page_number}: ไฟล์ชนิด {shown} ใช้ไม่ได้ รองรับเฉพาะ {allowed} "
-            "— ถ้าเป็นรูปจาก iPhone (.heic) ให้แปลงเป็น .jpg ก่อน"
+            "— ถ้าเป็นรูปจาก iPhone (.heic) ให้แปลงเป็น .jpg ก่อน "
+            "ถ้าเป็นไฟล์ที่สแกนมาเป็น .pdf ให้ใช้ช่องอัปโหลด PDF แทน"
         )
+    return _write_temp_upload(file_storage, work_dir, prefix=f"page{page_number}_", suffix=suffix)
+
+
+def _save_pdf_upload(file_storage, work_dir: str) -> str:
+    """เขียน PDF ที่อัปโหลดลงโฟลเดอร์งาน แล้วคืน path"""
+    suffix = Path(file_storage.filename or "").suffix.lower()
+    if suffix not in ALLOWED_PDF_SUFFIXES:
+        shown = suffix or "ไม่ทราบชนิด"
+        raise GradingError(
+            f"ช่องไฟล์สแกน PDF: ไฟล์ชนิด {shown} ใช้ไม่ได้ รองรับเฉพาะ .pdf "
+            "— ถ้าเป็นรูปให้ใช้ช่องอัปโหลดรูปหน้า 1 / หน้า 2 แทน"
+        )
+    return _write_temp_upload(file_storage, work_dir, prefix="scan_", suffix=suffix)
+
+
+def _write_temp_upload(file_storage, work_dir: str, prefix: str, suffix: str) -> str:
     # ตั้งชื่อไฟล์เองทั้งหมด ไม่เอาชื่อเดิมมาใช้ กัน path traversal
-    fd, path = tempfile.mkstemp(prefix=f"upload_page{page_number}_", suffix=suffix)
+    fd, path = tempfile.mkstemp(dir=work_dir, prefix=prefix, suffix=suffix)
     os.close(fd)
     file_storage.save(path)
     return path
 
 
-def _crops_from_photos(paths: dict[int, str], regions_path: str) -> tuple[dict, list[str]]:
-    """ปรับแนว + ตัดภาพต่อข้อ คืน (crops, รายการคำเตือน)"""
+def _pages_from_pdf(pdf_path: str, work_dir: str) -> tuple[dict[int, str], list[str]]:
+    """แตก PDF ที่สแกนมาเป็นรูปหน้า 1/หน้า 2 แล้วส่งต่อเข้าทางเดิมที่รับรูป"""
+    try:
+        pages, warnings = extract_scanned_pages(pdf_path, work_dir)
+    except PdfExtractError as exc:
+        raise GradingError(str(exc)) from exc
+    return {page.page_number: page.path for page in pages}, warnings
+
+
+def _crops_from_photos(
+    paths: dict[int, str], regions_path: str, work_dir: str, from_scan: bool = False
+) -> tuple[dict, list[str]]:
+    """ปรับแนว + ตัดภาพต่อข้อ คืน (crops, รายการคำเตือน)
+
+    from_scan บอกว่าภาพมาจากเครื่องสแกน (แตกมาจาก PDF) ไม่ใช่ถ่ายด้วยมือถือ
+    ใช้เลือกคำแนะนำในคำเตือนให้ตรงกับสิ่งที่ครูทำได้จริง
+    """
     template = load_region_template(regions_path)
     crops: dict = {}
     warnings: list[str] = []
     for page_number, photo_path in sorted(paths.items()):
-        aligned_path = os.path.join(tempfile.gettempdir(), f"_web_aligned_page{page_number}.png")
+        aligned_path = os.path.join(work_dir, f"aligned_page{page_number}.png")
         try:
             align_result = align_and_crop_file(photo_path, aligned_path)
         # จับกว้าง ๆ ตั้งใจ — ครูควรเห็นข้อความไทยที่ทำอะไรต่อได้ ไม่ใช่ traceback ดิบ
         except Exception as exc:
             raise GradingError(f"เปิดรูปหน้า {page_number} ไม่สำเร็จ: {exc}") from exc
         if not align_result.corners_found:
-            warnings.append(
-                f"หน้า {page_number}: หาขอบกระดาษไม่ชัด ใช้ภาพทั้งใบแทน "
-                "— ตำแหน่งตัดภาพต่อข้ออาจเพี้ยน ควรถ่ายใหม่บนพื้นที่สีตัดกับกระดาษ"
+            # ภาพจากเครื่องสแกนมักหาขอบไม่เจอเป็นปกติ เพราะกระดาษเต็มเฟรมอยู่แล้ว
+            # ไม่มีพื้นหลังให้ตัดขอบ — ไม่ใช่อาการผิดปกติ และถ่ายใหม่ก็ไม่ช่วยอะไร
+            advice = (
+                "— ปกติของภาพจากเครื่องสแกน เพราะกระดาษเต็มเฟรมอยู่แล้ว "
+                "แต่ถ้าผลตรวจเพี้ยนทั้งหน้า ให้สแกนใหม่โดยวางกระดาษให้ชิดขอบและไม่เอียง"
+                if from_scan
+                else "— ตำแหน่งตัดภาพต่อข้ออาจเพี้ยน ควรถ่ายใหม่บนพื้นที่สีตัดกับกระดาษ"
             )
+            warnings.append(f"หน้า {page_number}: หาขอบกระดาษไม่ชัด ใช้ภาพทั้งใบแทน {advice}")
         crops.update(crop_all_questions_on_page(align_result.image, template, page_number))
-        with contextlib.suppress(OSError):
-            os.remove(aligned_path)
     return crops, warnings
 
 
@@ -223,18 +263,48 @@ def create_app(settings: AppSettings | None = None) -> Flask:
 
         warnings: list[str] = []
         saved_paths: dict[int, str] = {}
+        from_scan = False
+        # โฟลเดอร์ของ request นี้โดยเฉพาะ ไม่ใช่ไฟล์ชื่อตายตัวใน temp กลาง —
+        # ชื่อตายตัวจะถูกทับกันเองถ้าครูกดตรวจซ้อนกันสองแท็บ แล้วคะแนนจะมาจาก
+        # กระดาษคนละใบโดยไม่มีอะไรฟ้อง ทั้งโฟลเดอร์ถูกลบทิ้งใน finally ทีเดียว
+        #
+        # ชื่อโฟลเดอร์เป็นภาษาไทยโดยตั้งใจ ไม่ใช่ตั้งเล่น: ครูที่ตั้งชื่อผู้ใช้ Windows
+        # เป็นภาษาไทยจะได้ path ที่มีอักษรไทยอยู่แล้วทุกครั้ง (temp อยู่ใต้ชื่อผู้ใช้)
+        # การใช้ชื่อไทยตรงนี้ทำให้ทุกเครื่องเดินผ่านทางเดียวกัน ถ้าวันหนึ่งมีใครใส่โค้ด
+        # ที่อ่าน path ไทยไม่ได้กลับเข้ามา (เช่น cv2.imread ตรง ๆ) จะพังให้เห็นทันที
+        # ทั้งใน CI และบนเครื่องทุกคน แทนที่จะพังเงียบ ๆ เฉพาะเครื่องครูที่ใช้ชื่อไทย
+        work_dir = tempfile.mkdtemp(prefix="ตรวจข้อสอบ_")
         try:
             for page_number in (1, 2):
                 uploaded = request.files.get(f"page{page_number}")
                 if uploaded is not None and uploaded.filename:
-                    saved_paths[page_number] = _save_upload(uploaded, page_number)
+                    saved_paths[page_number] = _save_upload(uploaded, page_number, work_dir)
+
+            pdf_upload = request.files.get("pdf")
+            if pdf_upload is not None and pdf_upload.filename:
+                # รับได้ทางเดียวเท่านั้น ไม่งั้นต้องเดาว่าครูตั้งใจใช้อันไหน
+                # แล้วถ้าเดาผิดคะแนนจะมาจากกระดาษคนละใบโดยไม่มีอะไรฟ้อง
+                if saved_paths:
+                    raise GradingError(
+                        "เลือกอย่างใดอย่างหนึ่ง: อัปโหลดไฟล์ PDF ที่สแกนมาไฟล์เดียว "
+                        "หรืออัปโหลดรูปแยกหน้า 1 / หน้า 2 — ใส่มาพร้อมกันทั้งสองแบบไม่ได้"
+                    )
+                pdf_path = _save_pdf_upload(pdf_upload, work_dir)
+                saved_paths, pdf_warnings = _pages_from_pdf(pdf_path, work_dir)
+                warnings.extend(pdf_warnings)
+                from_scan = True
 
             if mode == "real" and len(saved_paths) < 2:
-                raise GradingError("โหมดตรวจจริงต้องอัปโหลดรูปให้ครบทั้ง 2 หน้า")
+                raise GradingError(
+                    "โหมดตรวจจริงต้องมีกระดาษคำตอบครบทั้ง 2 หน้า "
+                    "— อัปโหลดไฟล์ PDF ที่สแกนมา หรือรูปให้ครบทั้ง 2 หน้า"
+                )
 
             crops = {}
             if saved_paths:
-                crops, align_warnings = _crops_from_photos(saved_paths, regions_path())
+                crops, align_warnings = _crops_from_photos(
+                    saved_paths, regions_path(), work_dir, from_scan=from_scan
+                )
                 warnings.extend(align_warnings)
 
             if mode == "real":
@@ -264,9 +334,9 @@ def create_app(settings: AppSettings | None = None) -> Flask:
                     "ใช้ดูหน้าตาผลลัพธ์เท่านั้น ห้ามนำคะแนนไปใช้"
                 )
         finally:
-            for path in saved_paths.values():
-                with contextlib.suppress(OSError):
-                    os.remove(path)
+            # ลบทั้งโฟลเดอร์ — PDF ต้นทาง รูปที่แตกออกมา และภาพที่ align แล้ว
+            # ภาพกระดาษคำตอบมีชื่อและลายมือนักเรียน ห้ามค้างอยู่ใน temp
+            shutil.rmtree(work_dir, ignore_errors=True)
 
         llm_grader, llm_mode, llm_warnings = _build_llm_grader(
             settings_obj, want_real=(mode == "real")

@@ -4,6 +4,10 @@
 // เซิร์ฟเวอร์คำนวณคะแนนแล้วส่งกลับ ครูแก้ในหน้านี้ แล้วส่งกลับไปบันทึกทีเดียว
 let lastGrading = null;
 
+// บันทึกไปแล้วหรือยังสำหรับผลชุดที่แสดงอยู่ — ใช้กันกดบันทึกซ้ำ เพราะทุกครั้งที่บันทึก
+// จะ "ต่อแถวใหม่" ลง CSV/Sheet เสมอ ไม่ได้ทับแถวเดิม กดซ้ำ = นักเรียนคนเดียวมี 2 แถว
+let savedOnce = false;
+
 const $ = (id) => document.getElementById(id);
 
 function show(el, text) {
@@ -82,7 +86,7 @@ $("statusToggle").addEventListener("click", () => {
 
 // ---------- ช่องลากรูป ----------
 
-function setupDrop(dropId, inputId) {
+function setupDrop(dropId, inputId, onPicked) {
   const drop = $(dropId);
   const input = $(inputId);
   const note = drop.querySelector(".drop-note");
@@ -95,9 +99,23 @@ function setupDrop(dropId, inputId) {
     input.files = dt.files;
     note.textContent = file.name;
     drop.classList.add("filled");
-    preview.src = URL.createObjectURL(file);
-    preview.hidden = false;
+    // ช่อง PDF ไม่มี <img> ให้พรีวิว เบราว์เซอร์แสดงหน้าแรกของ PDF ในแท็กนี้ไม่ได้
+    if (preview) {
+      preview.src = URL.createObjectURL(file);
+      preview.hidden = false;
+    }
+    if (onPicked) onPicked();
   }
+
+  drop.clearPicked = function () {
+    input.value = "";
+    note.textContent = "ยังไม่ได้เลือกไฟล์";
+    drop.classList.remove("filled");
+    if (preview) {
+      preview.hidden = true;
+      preview.removeAttribute("src");
+    }
+  };
 
   input.addEventListener("change", () => accept(input.files[0]));
 
@@ -116,8 +134,63 @@ function setupDrop(dropId, inputId) {
   drop.addEventListener("drop", (e) => accept(e.dataTransfer.files[0]));
 }
 
-setupDrop("drop1", "page1");
-setupDrop("drop2", "page2");
+// PDF กับรูปแยกหน้าใช้ได้ทีละทาง — เคลียร์อีกทางให้เลยตอนเลือก จะได้ไม่ต้องให้
+// ครูไปลบเองแล้วมาเจอ error ตอนกดตรวจ (ฝั่งเซิร์ฟเวอร์ก็กันซ้ำอีกชั้นอยู่แล้ว)
+function clearPhotoDrops() {
+  $("drop1").clearPicked();
+  $("drop2").clearPicked();
+}
+
+function clearPdfDrop() {
+  $("dropPdf").clearPicked();
+}
+
+setupDrop("drop1", "page1", clearPdfDrop);
+setupDrop("drop2", "page2", clearPdfDrop);
+setupDrop("dropPdf", "pdfFile", clearPhotoDrops);
+
+// ---------- วนตรวจคนถัดไป ----------
+
+// ครูตรวจทั้งห้องรวดเดียว ไม่ใช่คนเดียวจบ — หลังบันทึกแล้วต้องล้างของคนเก่าให้หมด
+// ทั้งชื่อและไฟล์ ไม่งั้นเผลอกดตรวจอีกทีจะได้กระดาษของคนก่อนหน้าติดมาด้วย
+function resetForNextStudent() {
+  savedOnce = false;
+  lastGrading = null;
+
+  ["studentName", "studentNo", "studentClass"].forEach((id) => {
+    $(id).value = "";
+  });
+  clearPhotoDrops();
+  clearPdfDrop();
+
+  $("results").hidden = true;
+  $("resultRows").innerHTML = "";
+  $("warnings").innerHTML = "";
+  hide($("formError"));
+  hide($("saveOk"));
+  hide($("saveWarn"));
+  hide($("saveError"));
+  $("saveBtn").hidden = false;
+  $("nextBtn").hidden = true;
+
+  window.scrollTo({ top: 0, behavior: "smooth" });
+  $("studentName").focus();
+}
+
+// แก้คะแนนหลังบันทึกไปแล้ว = ต้องบันทึกใหม่ แต่ครูต้องรู้ว่ามันเพิ่มแถว ไม่ได้ทับ
+function scoreChangedAfterSave() {
+  if (!savedOnce) return;
+  savedOnce = false;
+  $("saveBtn").hidden = false;
+  hide($("saveOk"));
+  show(
+    $("saveWarn"),
+    "แก้คะแนนหลังจากบันทึกไปแล้ว — ถ้ากดบันทึกอีกครั้งจะเพิ่มเป็นแถวใหม่ " +
+      "ไม่ได้ทับแถวเดิม ต้องไปลบแถวเก่าออกเองในไฟล์/ชีต"
+  );
+}
+
+$("nextBtn").addEventListener("click", resetForNextStudent);
 
 // ---------- ตรวจข้อสอบ ----------
 
@@ -129,7 +202,12 @@ $("gradeForm").addEventListener("submit", async (e) => {
   e.preventDefault();
   hide($("formError"));
   hide($("saveOk"));
+  hide($("saveWarn"));
   hide($("saveError"));
+  // ผลชุดใหม่ = ยังไม่ได้บันทึก ต้องเอาปุ่มบันทึกกลับมาเสมอ
+  savedOnce = false;
+  $("saveBtn").hidden = false;
+  $("nextBtn").hidden = true;
 
   const mode = selectedMode();
   const body = new FormData();
@@ -137,11 +215,16 @@ $("gradeForm").addEventListener("submit", async (e) => {
   body.append("student_name", $("studentName").value);
   body.append("student_no", $("studentNo").value);
   body.append("student_class", $("studentClass").value);
-  if ($("page1").files[0]) body.append("page1", $("page1").files[0]);
-  if ($("page2").files[0]) body.append("page2", $("page2").files[0]);
+  const pdfFile = $("pdfFile").files[0];
+  if (pdfFile) {
+    body.append("pdf", pdfFile);
+  } else {
+    if ($("page1").files[0]) body.append("page1", $("page1").files[0]);
+    if ($("page2").files[0]) body.append("page2", $("page2").files[0]);
+  }
 
-  if (mode === "real" && (!$("page1").files[0] || !$("page2").files[0])) {
-    show($("formError"), "โหมดตรวจจริงต้องใส่รูปให้ครบทั้ง 2 หน้าก่อน");
+  if (mode === "real" && !pdfFile && (!$("page1").files[0] || !$("page2").files[0])) {
+    show($("formError"), "โหมดตรวจจริงต้องใส่ไฟล์สแกน PDF หรือรูปให้ครบทั้ง 2 หน้าก่อน");
     return;
   }
 
@@ -253,6 +336,7 @@ function renderResults(data) {
       const changed = Number(input.value) !== Number(input.dataset.original);
       input.classList.toggle("edited", changed);
       recalcTotal();
+      scoreChangedAfterSave();
     });
     const max = document.createElement("span");
     max.className = "score-max";
@@ -271,8 +355,9 @@ function renderResults(data) {
 // ---------- บันทึก ----------
 
 $("saveBtn").addEventListener("click", async () => {
-  if (!lastGrading) return;
+  if (!lastGrading || savedOnce) return;
   hide($("saveOk"));
+  hide($("saveWarn"));
   hide($("saveError"));
 
   const results = lastGrading.results.map((r) => {
@@ -306,6 +391,11 @@ $("saveBtn").addEventListener("click", async () => {
       $("saveOk"),
       `บันทึกแล้ว ${data.total_score}/${data.max_total} คะแนน · สถานะ "${data.status}" · ลงที่ ${data.target}`
     );
+    // ซ่อนปุ่มบันทึกทันที ไม่ใช่แค่ disable — กดซ้ำจะได้นักเรียนคนเดียว 2 แถว
+    // แล้วเปิดทางไปคนต่อไปให้ตรงนั้นเลย ครูจะได้ไม่ต้องรีเฟรชหน้าเอง
+    savedOnce = true;
+    btn.hidden = true;
+    $("nextBtn").hidden = false;
   } catch (err) {
     show($("saveError"), `บันทึกไม่สำเร็จ: ${err.message}`);
   } finally {

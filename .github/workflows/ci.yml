@@ -59,6 +59,9 @@ jobs:
       - name: เทส regions + pipeline
         run: python tests/test_regions_and_pipeline.py
 
+      - name: เทสแตกหน้าจาก PDF ที่สแกนมา
+        run: python tests/test_pdf_pages.py
+
       - name: เทส SDK ของ Claude/Google (mock)
         run: python tests/test_real_integrations_mocked.py
 
