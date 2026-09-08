@@ -54,6 +54,47 @@ with open(CONFIG_PATH, encoding="utf-8") as f:
 config_ids = {q["question_id"] for q in config_questions}
 region_ids = set(template.regions.keys())
 check("regions.json มีพิกัดครบทุกข้อใน answer_key_config.json", config_ids == region_ids)
+check(
+    "page_of_question ระบุหน้าครบทุกข้อ ไม่มีข้อไหนตกหล่น",
+    set(template.page_of_question.keys()) == config_ids,
+)
+
+# เคยพลาดมาแล้วจริง: พิกัดชุดแรกวัดจาก PDF ที่ render ด้วยโปรแกรม ไม่ใช่กระดาษที่พิมพ์จริง
+# ผลคือกรอบทั้ง 12 ข้อไปตกบนที่ว่าง/รูปภาพ และข้อ 2.3 ถูกระบุว่าอยู่หน้า 2 ทั้งที่อยู่หน้า 1
+# เทสด้านล่างจับ "รูปทรงที่เป็นไปไม่ได้" ได้ แต่จับ "ตกผิดที่แต่รูปทรงยังดูปกติ" ไม่ได้
+# อันหลังต้องดูด้วยตาผ่าน tools/calibrate_regions.py กับกระดาษจริงเท่านั้น
+print("\nรูปทรงของพิกัดใน regions.json")
+bad_shape = [
+    qid for qid, (left, top, right, bottom) in template.regions.items()
+    if right <= left or bottom <= top
+]
+check("ทุกกรอบมีความกว้าง/ความสูงเป็นบวก", not bad_shape)
+
+outside = [
+    qid for qid, (left, top, right, bottom) in template.regions.items()
+    if left < 0 or top < 0
+    or right > template.reference_width or bottom > template.reference_height
+]
+check("ทุกกรอบอยู่ในขอบภาพอ้างอิง ไม่ล้นออกนอก", not outside)
+
+# กรอบเล็กเกินไป = crop มาแล้ว OCR อ่านอะไรไม่ได้ ต้องฟ้องตั้งแต่ตอนแก้ config
+too_small = [
+    qid for qid, (left, top, right, bottom) in template.regions.items()
+    if (right - left) < 50 or (bottom - top) < 20
+]
+check("ไม่มีกรอบที่เล็กจนอ่านลายมือไม่ได้ (กว้าง >= 50, สูง >= 20)", not too_small)
+
+# สองข้อในหน้าเดียวกันทับกัน = ตัดภาพเดียวกันไปตรวจสองข้อ คะแนนจะพันกันแบบไม่มีอะไรฟ้อง
+overlaps = []
+for page in sorted(set(template.page_of_question.values())):
+    ids = sorted(qid for qid in template.regions if template.page_of_question.get(qid) == page)
+    for i, a in enumerate(ids):
+        ax0, ay0, ax1, ay1 = template.regions[a]
+        for b in ids[i + 1:]:
+            bx0, by0, bx1, by1 = template.regions[b]
+            if ax0 < bx1 and bx0 < ax1 and ay0 < by1 and by0 < ay1:
+                overlaps.append(f"{a}<->{b} (หน้า {page})")
+check(f"ไม่มีกรอบสองข้อในหน้าเดียวกันทับกัน {overlaps or ''}", not overlaps)
 
 print("\ncrop_question")
 fake_image = np.zeros((template.reference_height, template.reference_width, 3), dtype=np.uint8)
