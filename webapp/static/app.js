@@ -44,10 +44,20 @@ async function loadStatus() {
     list.appendChild(li);
   });
 
-  $("settingsFileLine").textContent = data.settings_file
-    ? `อ่านค่าจาก ${data.settings_file}`
-    : "ยังไม่มีไฟล์ settings.json — กำลังใช้ค่าเริ่มต้น (โหมดลองใช้งาน) " +
-      "ถ้าจะตรวจจริง ให้คัดลอก settings.example.json เป็น settings.json แล้วเติมค่า";
+  // ไม่มี settings.json ไม่ได้แปลว่าตรวจจริงไม่ได้อีกต่อไป — ถ้าเครื่องมีคำสั่ง claude
+  // ก็ตรวจจริงได้เลยด้วยค่าเริ่มต้น ข้อความตรงนี้จึงต้องดูที่ ready.real ไม่ใช่ดูว่ามีไฟล์ไหม
+  if (data.settings_file) {
+    $("settingsFileLine").textContent = `อ่านค่าจาก ${data.settings_file}`;
+  } else if (data.ready.real) {
+    $("settingsFileLine").textContent =
+      "ยังไม่มีไฟล์ settings.json — ใช้ค่าเริ่มต้นอยู่ ซึ่งตรวจจริงได้แล้ว " +
+      "(สร้าง settings.json เมื่อจะเปลี่ยนที่เก็บผล หรือใส่ anthropic_api_key ให้เร็วขึ้น)";
+  } else {
+    $("settingsFileLine").textContent =
+      "ยังไม่มีไฟล์ settings.json และเครื่องนี้ยังไม่มีคำสั่ง claude — ตรวจจริงยังไม่ได้ " +
+      "ให้ติดตั้ง Claude Code แล้วล็อกอิน หรือคัดลอก settings.example.json เป็น settings.json " +
+      "แล้วใส่ anthropic_api_key";
+  }
 
   const problemBox = $("statusProblems");
   problemBox.innerHTML = "";
@@ -70,6 +80,9 @@ async function loadStatus() {
 
   // โหมดตรวจจริงกดไม่ได้ถ้ายังไม่ได้ตั้ง credentials — บอกเหตุผลตรงนั้นเลย
   const realInput = document.querySelector('input[name="mode"][value="real"]');
+  // ตรวจจริงได้เมื่อไหร่ให้เลือกไว้ให้เลย — ครูเปิดโปรแกรมมาเพื่อตรวจกระดาษจริง
+  // ไม่ใช่มาดูตัวอย่าง การปล่อยให้ค้างที่โหมดลองใช้งานคือต้นเหตุที่ครูเผลอตรวจผิดโหมด
+  if (data.ready.real) realInput.checked = true;
   if (!data.ready.ocr) {
     realInput.disabled = true;
     $("realMode").classList.add("disabled");

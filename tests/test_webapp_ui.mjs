@@ -324,5 +324,37 @@ check(
 );
 
 
+// ---------- ข้อความเรื่อง settings.json ต้องตรงกับความจริง ----------
+// เคยเขียนตายตัวว่า "ไม่มีไฟล์ = โหมดลองใช้งาน" ซึ่งไม่จริงแล้ว เครื่องที่มีคำสั่ง claude
+// ตรวจจริงได้เลยโดยไม่ต้องมีไฟล์ ครูอ่านแล้วสับสนว่าตกลงตรวจจริงได้หรือไม่ได้
+console.log("");
+console.log("ข้อความสถานะเรื่อง settings.json");
+
+statusJson.stale_server = false;
+statusJson.settings_file = null;
+statusJson.ready = { ocr: true, llm: true, sheets: false, real: true };
+window.eval(appJs);
+await tick();
+check(
+  "ไม่มีไฟล์ แต่ตรวจจริงได้ -> ต้องไม่บอกว่าเป็นโหมดลองใช้งาน",
+  $("settingsFileLine").textContent.includes("ตรวจจริงได้แล้ว") &&
+    !$("settingsFileLine").textContent.includes("โหมดลองใช้งาน")
+);
+// ครูเปิดโปรแกรมมาเพื่อตรวจกระดาษจริง ไม่ใช่มาดูตัวอย่าง — ถ้าตรวจจริงได้ต้องเลือกไว้ให้เลย
+check(
+  "ตรวจจริงได้ -> ติ๊กโหมดตรวจจริงไว้ให้เลย",
+  window.document.querySelector('input[name="mode"][value="real"]').checked
+);
+
+statusJson.ready = { ocr: false, llm: false, sheets: false, real: false };
+window.eval(appJs);
+await tick();
+check(
+  "ไม่มีไฟล์ และตรวจจริงไม่ได้ -> บอกทางแก้ทั้งสองทาง",
+  $("settingsFileLine").textContent.includes("Claude Code") &&
+    $("settingsFileLine").textContent.includes("anthropic_api_key")
+);
+
+
 console.log(`\nผ่าน ${passed} ตก ${failed}`);
 process.exit(failed ? 1 : 0);

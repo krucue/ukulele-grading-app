@@ -97,9 +97,15 @@ def main() -> None:
         print("\n  พบปัญหาในไฟล์ settings.json:")
         for problem in settings.problems:
             print(f"  ! {problem}")
-    if not anthropic_installed():
+    if settings.claude_route is None:
         print()
-        print("  ! ยังไม่ได้ติดตั้งไลบรารี anthropic — โหมดตรวจจริงจะใช้ไม่ได้")
+        print("  ! ตรวจจริงยังใช้ไม่ได้ — ต้องมีอย่างใดอย่างหนึ่ง")
+        print("    (1) ติดตั้ง Claude Code แล้วล็อกอิน (ดู claude.com/code)")
+        print("    (2) ใส่ anthropic_api_key ใน settings.json แล้วติดตั้งไลบรารี:")
+        print("        pip install -r requirements.txt")
+    elif settings.claude_route == "api" and not anthropic_installed():
+        print()
+        print("  ! ตั้งคีย์ไว้แล้วแต่ยังไม่ได้ติดตั้งไลบรารี anthropic — โหมดตรวจจริงจะใช้ไม่ได้")
         print("    แก้โดยปิดหน้าต่างนี้ แล้วเปิด PowerShell ที่โฟลเดอร์นี้พิมพ์:")
         print("        pip install -r requirements.txt")
     print("\n  ปิดโปรแกรม: กด Ctrl+C ในหน้าต่างนี้ หรือปิดหน้าต่างนี้ทิ้ง")
