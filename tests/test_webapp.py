@@ -65,7 +65,7 @@ with tempfile.TemporaryDirectory() as tmpdir:
         json.dumps(
             {
                 "anthropic_api_key": "sk-ทดสอบ",
-                "claude_model": "claude-opus-5",
+                "claude_model": "claude-sonnet-5",
                 "sheet": {"mode": "google", "spreadsheet_id": ""},
                 "exam": {"answer_key": "config/answer_key_config.json"},
             },
@@ -76,13 +76,23 @@ with tempfile.TemporaryDirectory() as tmpdir:
     loaded = load_settings(good)
     check("อ่านคีย์จากไฟล์ได้", loaded.anthropic_api_key == "sk-ทดสอบ")
     check("llm_ready = จริง เมื่อมีคีย์", loaded.llm_ready)
-    check("ocr_ready = เท็จ เมื่อยังไม่มี credentials", not loaded.ocr_ready)
-    check("เปลี่ยนโมเดลได้จากไฟล์", loaded.claude_model == "claude-opus-5")
+    # คีย์ Anthropic ใบเดียวปลดล็อกทั้งอ่านลายมือและตรวจข้อบรรยาย ไม่ต้องมีของ Google
+    check("ocr_ready = จริง เมื่อมีคีย์ Anthropic", loaded.ocr_ready)
+    check("ตรวจจริงได้ครบสายด้วยคีย์ใบเดียว", loaded.real_mode_ready)
+    check("google_ready = เท็จ เมื่อยังไม่มี service account", not loaded.google_ready)
+    check("เปลี่ยนโมเดลได้จากไฟล์", loaded.claude_model == "claude-sonnet-5")
     check(
         "เตือนเมื่อเลือก google แต่ไม่ใส่ spreadsheet_id",
         any("spreadsheet_id" in p for p in loaded.problems),
         f"problems={loaded.problems}",
     )
+    check(
+        "เตือนเมื่อเลือก google แต่ไม่ใส่ google_credentials_path",
+        any("google_credentials_path" in p for p in loaded.problems),
+        f"problems={loaded.problems}",
+    )
+    # เขียน Sheets ต้องใช้ของ Google จริง ๆ ห้ามคิดว่าพร้อมเพราะมีคีย์ Anthropic
+    check("sheets_ready = เท็จ เมื่อไม่มี credentials ของ Google", not loaded.sheets_ready)
 
     broken = Path(tmpdir) / "broken.json"
     broken.write_text("{ นี่ไม่ใช่ JSON", encoding="utf-8")
@@ -315,6 +325,24 @@ with tempfile.TemporaryDirectory() as tmpdir:
         check(
             "บอกให้เลือกอย่างใดอย่างหนึ่ง",
             "อย่างใดอย่างหนึ่ง" in res.get_json()["error"],
+            res.get_json()["error"],
+        )
+
+        # ---------- โหมดตรวจจริงโดยยังไม่ได้ตั้งคีย์ ----------
+        # จุดตายของทั้งระบบ: ถ้าตรงนี้ถอยไปใช้คำตอบจำลองเงียบ ๆ ครูจะเอาคะแนนที่
+        # ไม่ได้มาจากลายมือจริงไปกรอกปพ. ต้องตีกลับพร้อมบอกว่าต้องตั้งอะไร
+        res = client.post(
+            "/api/grade",
+            data={
+                "mode": "real",
+                "pdf": (scan_pdf_bytes([(620, 877), (620, 877)]), "สแกน.pdf"),
+            },
+            content_type="multipart/form-data",
+        )
+        check("โหมดตรวจจริงที่ยังไม่ได้ตั้งคีย์ ถูกตีกลับ ไม่ถอยไปใช้ของจำลอง", res.status_code == 400)
+        check(
+            "บอกว่าต้องตั้ง anthropic_api_key",
+            "anthropic_api_key" in res.get_json()["error"],
             res.get_json()["error"],
         )
 

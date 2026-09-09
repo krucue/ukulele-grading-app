@@ -8,14 +8,16 @@ OCR -> ให้คะแนน -> บันทึกผล
         --mock-answers demo/mock_ocr_answers.json \\
         --sheet csv --sheet-path out.csv
 
-ตัวอย่างการใช้งานจริง (มี credentials ครบ):
+ตัวอย่างการใช้งานจริง (ต้องมี ANTHROPIC_API_KEY ใบเดียว):
     export ANTHROPIC_API_KEY=...
-    export GOOGLE_APPLICATION_CREDENTIALS=/path/service-account.json
     python grade_exam.py \\
         --page1 photo_page1.jpg --page2 photo_page2.jpg \\
-        --ocr vision --llm claude \\
+        --ocr claude --llm claude \\
         --student-name "ด.ช. ทดสอบ ใจดี" --student-no 12 --student-class 5/2 \\
-        --sheet google --spreadsheet-id <ID> --credentials /path/service-account.json
+        --sheet csv --sheet-path ผลตรวจ.csv
+
+(--ocr vision คือทางเลือกเดิมที่ใช้ Google Cloud Vision ยังใช้ได้ถ้ามี service account อยู่แล้ว
+ ต้องตั้ง GOOGLE_APPLICATION_CREDENTIALS ให้ชี้ไฟล์ json ด้วย)
 """
 
 from __future__ import annotations
@@ -49,7 +51,12 @@ def build_arg_parser() -> argparse.ArgumentParser:
     parser.add_argument("--student-no", default="")
     parser.add_argument("--student-class", default="")
 
-    parser.add_argument("--ocr", choices=["mock", "vision"], default="mock")
+    parser.add_argument(
+        "--ocr",
+        choices=["mock", "claude", "vision"],
+        default="mock",
+        help="claude = อ่านลายมือด้วย Claude (ต้องมี ANTHROPIC_API_KEY) · vision = Google Cloud Vision · mock = คำตอบจำลองจากไฟล์",
+    )
     parser.add_argument(
         "--mock-answers",
         default=None,
@@ -91,9 +98,9 @@ def show_usage_and_pause() -> None:
     print("      python grade_exam.py --page1 หน้า1.jpg --page2 หน้า2.jpg \\")
     print("          --mock-answers demo/mock_ocr_answers.json --sheet csv --sheet-path out.csv")
     print()
-    print("  [3] ตรวจจริงเต็มระบบ (ต้องตั้ง ANTHROPIC_API_KEY + Google credentials ก่อน):")
+    print("  [3] ตรวจจริงเต็มระบบ (ต้องตั้ง anthropic_api_key ใน settings.json ก่อน):")
     print("      python grade_exam.py --page1 หน้า1.jpg --page2 หน้า2.jpg \\")
-    print("          --ocr vision --llm claude \\")
+    print("          --ocr claude --llm claude \\")
     print("          --student-name \"ด.ช. ทดสอบ ใจดี\" --student-no 12 --student-class 5/2")
     print()
     print("  ดูตัวเลือกทั้งหมด:  python grade_exam.py --help")
@@ -143,7 +150,23 @@ def main() -> None:
         return
 
     # ---------- 3) OCR ----------
-    if args.ocr == "vision":
+    if args.ocr == "claude":
+        try:
+            from grading.ocr import ClaudeVisionOcrProvider
+            from grading.settings import load_settings
+
+            # เคารพ settings.json ที่ครูตั้งไว้แล้ว (คีย์ + โมเดล) เหมือนที่เว็บแอปทำ
+            app_settings = load_settings()
+            app_settings.apply_to_env()
+            ocr_provider = ClaudeVisionOcrProvider(model=app_settings.claude_model)
+            ocr_results = ocr_provider.extract_from_crops(crops)
+        except Exception as exc:  # noqa: BLE001
+            fail(
+                "อ่านลายมือด้วย Claude ไม่สำเร็จ — ตรวจสอบว่าติดตั้ง anthropic แล้ว และตั้ง "
+                f"anthropic_api_key ใน settings.json (หรือ ANTHROPIC_API_KEY) ถูกต้องหรือยัง: {exc}"
+            )
+            return
+    elif args.ocr == "vision":
         try:
             from grading.ocr import GoogleVisionOcrProvider
 

@@ -73,7 +73,7 @@ html = html.replace(/\{\{[^}]*\}\}/g, ""); // ตัด url_for ทิ้ง —
 const statusJson = {
   settings_file: null,
   problems: [],
-  status_lines: ["อ่านลายมือ (OCR): โหมดจำลอง — ยังไม่ได้ตั้ง google_credentials_path"],
+  status_lines: ["อ่านลายมือ (OCR): โหมดจำลอง — ยังไม่ได้ตั้ง anthropic_api_key"],
   ready: { ocr: false, llm: false, sheets: false, real: false },
   sheet_target: "ไฟล์ ผลตรวจ.csv",
   exam: { exam_id: "ukulele-p5", total_score: 15, questions: [], problems: [] },

@@ -171,6 +171,40 @@ if anthropic is not None:
             question.reference_answer in body["messages"][0]["content"]
             and "strumming" in body["messages"][0]["content"],
         )
+
+        # ---------- อ่านลายมือด้วย Claude (ภาพ + JSON กลับมา) ----------
+        # ชั้นนี้เปราะกว่าฝั่งข้อความล้วน เพราะต้องประกอบ content block ชนิด image
+        # ให้ตรงรูปแบบที่ Messages API รับ ถ้า SDK เปลี่ยน schema เมื่อไหร่ต้องเห็นตรงนี้
+        from grading.ocr import ClaudeVisionOcrProvider
+
+        FAKE_API_RESPONSE["content"][0]["text"] = json.dumps(
+            {"text": "ดีดพร้อมกันหลายสาย", "confidence": 0.82}, ensure_ascii=False
+        )
+        received.clear()
+
+        ocr = ClaudeVisionOcrProvider(api_key="sk-ant-ไม่ใช่คีย์จริง-ใช้เทสเท่านั้น")
+        crop = np.full((59, 648, 3), 255, np.uint8)
+        ocr_results = ocr.extract_from_crops({"1.1": crop})
+
+        check(
+            "extract_from_crops เดินผ่าน SDK จริงจนจบ ได้ข้อความกลับมา",
+            ocr_results["1.1"].text == "ดีดพร้อมกันหลายสาย",
+            repr(ocr_results["1.1"].text),
+        )
+        check("อ่าน confidence กลับมาได้", abs(ocr_results["1.1"].confidence - 0.82) < 1e-6)
+
+        ocr_body = received.get("body", {})
+        ocr_content = ocr_body.get("messages", [{}])[0].get("content", [])
+        image_blocks = [b for b in ocr_content if isinstance(b, dict) and b.get("type") == "image"]
+        check("SDK จริงยังยอมรับ content block ชนิด image", len(image_blocks) == 1, str(ocr_body)[:200])
+        if image_blocks:
+            source = image_blocks[0]["source"]
+            check(
+                "ส่งเป็น base64 image/png ตาม schema ปัจจุบัน",
+                source.get("type") == "base64" and source.get("media_type") == "image/png",
+                str(source.get("type")) + "/" + str(source.get("media_type")),
+            )
+        check("ส่ง system prompt ไปด้วย", bool(ocr_body.get("system")), str(ocr_body.get("system"))[:60])
     finally:
         server.shutdown()
         if previous_base_url is None:

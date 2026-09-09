@@ -20,8 +20,9 @@ import os
 from dataclasses import dataclass, field
 from pathlib import Path
 
-# ค่าเริ่มต้นของโมเดลที่ใช้ตรวจข้อบรรยาย ตรงกับ default ของ ClaudeSemanticGrader
-DEFAULT_CLAUDE_MODEL = "claude-sonnet-4-6"
+# โมเดลที่ใช้ทั้งอ่านลายมือ (ClaudeVisionOcrProvider) และตรวจข้อบรรยาย (ClaudeSemanticGrader)
+# ทั้งสองคลาสอ่านค่าเริ่มต้นจากตรงนี้ที่เดียว จะได้ไม่หลุดกันเองเวลาเปลี่ยนรุ่น
+DEFAULT_CLAUDE_MODEL = "claude-opus-5"
 
 SETTINGS_FILENAME = "settings.json"
 
@@ -52,7 +53,16 @@ class AppSettings:
 
     @property
     def ocr_ready(self) -> bool:
-        """อ่านลายมือจากภาพด้วย Google Vision ตัวจริงได้หรือยัง"""
+        """อ่านลายมือจากภาพด้วย Claude ตัวจริงได้หรือยัง
+
+        ใช้คีย์ใบเดียวกับ llm_ready โดยตั้งใจ — ทั้งอ่านลายมือและตรวจข้อบรรยาย
+        เดินผ่าน Anthropic API ทางเดียวกัน ครูจึงตั้งค่าที่เดียวจบ
+        """
+        return bool(self.anthropic_api_key)
+
+    @property
+    def google_ready(self) -> bool:
+        """มี service account ของ Google ที่ใช้ได้จริงหรือยัง (ใช้เฉพาะตอนบันทึกลง Sheets)"""
         return bool(self.google_credentials_path) and Path(self.google_credentials_path).exists()
 
     @property
@@ -60,17 +70,17 @@ class AppSettings:
         """เขียนผลลง Google Sheets ตัวจริงได้หรือยัง"""
         if self.sheet_mode != "google":
             return False
-        return bool(self.spreadsheet_id) and self.ocr_ready
+        return bool(self.spreadsheet_id) and self.google_ready
 
     @property
     def real_mode_ready(self) -> bool:
-        """ตรวจของจริงได้ครบทั้งสายหรือยัง (ต้องมีทั้ง OCR จริงและ LLM จริง)"""
+        """ตรวจของจริงได้ครบทั้งสายหรือยัง (อ่านลายมือ + ตรวจข้อบรรยาย)"""
         return self.ocr_ready and self.llm_ready
 
     def apply_to_env(self) -> None:
         """ยัดค่าลง environment ให้ไลบรารีของ Google/Anthropic มองเห็น
 
-        ทั้ง google-cloud-vision และ google-api-python-client อ่าน credentials จาก
+        google-api-python-client (ที่ใช้เขียน Google Sheets) อ่าน credentials จาก
         GOOGLE_APPLICATION_CREDENTIALS เท่านั้น ไม่มีทางส่งเข้าไปทาง argument
         """
         if self.anthropic_api_key:
@@ -82,9 +92,9 @@ class AppSettings:
         """ข้อความสรุปสถานะให้ครูอ่านรู้เรื่องว่าตอนนี้พร้อมแค่ไหน"""
         lines = []
         lines.append(
-            "อ่านลายมือ (OCR): Google Vision ตัวจริง"
+            f"อ่านลายมือ (OCR): Claude ตัวจริง ({self.claude_model})"
             if self.ocr_ready
-            else "อ่านลายมือ (OCR): โหมดจำลอง — ยังไม่ได้ตั้ง google_credentials_path"
+            else "อ่านลายมือ (OCR): โหมดจำลอง — ยังไม่ได้ตั้ง anthropic_api_key"
         )
         lines.append(
             f"ตรวจข้อบรรยาย: Claude ตัวจริง ({self.claude_model})"
@@ -167,5 +177,11 @@ def load_settings(path: str | Path | None = None) -> AppSettings:
 
     if settings.sheet_mode == "google" and not settings.spreadsheet_id:
         settings.problems.append('เลือก sheet.mode = "google" แล้วแต่ยังไม่ได้ใส่ sheet.spreadsheet_id')
+
+    if settings.sheet_mode == "google" and not settings.google_credentials_path:
+        settings.problems.append(
+            'เลือก sheet.mode = "google" แล้วแต่ยังไม่ได้ใส่ google_credentials_path '
+            "— การเขียนลง Sheets ต้องใช้ service account ของ Google (การตรวจข้อสอบไม่ต้องใช้)"
+        )
 
     return settings

@@ -14,11 +14,35 @@ if not defined PYEXE (
 )
 if not defined PYEXE goto nopython
 
+rem ครั้งแรกในเครื่องใหม่จะยังไม่มีไลบรารี ติดตั้งให้เลยดีกว่าปล่อยให้พังตอนกดตรวจ
+rem เช็คทั้ง 4 ตัวที่ต้องใช้จริง — anthropic คือตัวที่ใช้อ่านลายมือกับตรวจข้อบรรยาย
+%PYEXE% -c "import flask, cv2, pypdf, anthropic" >nul 2>nul
+if errorlevel 1 (
+    echo.
+    echo   ครั้งแรกในเครื่องนี้ ต้องติดตั้งไลบรารีก่อน รอสัก 2-3 นาที...
+    echo.
+    %PYEXE% -m pip install -r requirements.txt
+    if errorlevel 1 goto pipfailed
+)
+
 echo.
 echo   กำลังเปิดระบบตรวจข้อสอบ รอสักครู่...
 echo   เบราว์เซอร์จะเปิดขึ้นมาเอง ถ้าไม่ขึ้น ให้ดูลิงก์ที่พิมพ์ด้านล่าง
 echo.
 %PYEXE% web_app.py
+goto done
+
+:pipfailed
+echo.
+echo ======================================================================
+echo   ติดตั้งไลบรารีไม่สำเร็จ
+echo ======================================================================
+echo.
+echo   ลองเปิด PowerShell ที่โฟลเดอร์นี้แล้วพิมพ์คำสั่งนี้เอง เพื่อดูข้อความเต็ม ๆ:
+echo       python -m pip install -r requirements.txt
+echo.
+echo   ถ้าติดที่เน็ตของโรงเรียนบล็อกไว้ ให้ลองเน็ตมือถือแทน
+echo.
 goto done
 
 :nopython

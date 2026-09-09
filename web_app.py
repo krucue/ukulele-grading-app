@@ -13,6 +13,7 @@ from __future__ import annotations
 
 import argparse
 import contextlib
+import importlib.util
 import socket
 import sys
 import threading
@@ -40,6 +41,14 @@ def find_free_port(host: str, start_port: int, attempts: int = 20) -> int | None
         if port_is_free(host, start_port + offset):
             return start_port + offset
     return None
+
+
+def anthropic_installed() -> bool:
+    """โหมดตรวจจริงพึ่งไลบรารี anthropic ทั้งอ่านลายมือและตรวจข้อบรรยาย
+
+    เช็คตั้งแต่ตอนเปิดโปรแกรม ดีกว่าปล่อยให้ครูใส่กระดาษ กดตรวจ แล้วค่อยเจอ error
+    """
+    return importlib.util.find_spec("anthropic") is not None
 
 
 def build_arg_parser() -> argparse.ArgumentParser:
@@ -88,6 +97,11 @@ def main() -> None:
         print("\n  พบปัญหาในไฟล์ settings.json:")
         for problem in settings.problems:
             print(f"  ! {problem}")
+    if not anthropic_installed():
+        print()
+        print("  ! ยังไม่ได้ติดตั้งไลบรารี anthropic — โหมดตรวจจริงจะใช้ไม่ได้")
+        print("    แก้โดยปิดหน้าต่างนี้ แล้วเปิด PowerShell ที่โฟลเดอร์นี้พิมพ์:")
+        print("        pip install -r requirements.txt")
     print("\n  ปิดโปรแกรม: กด Ctrl+C ในหน้าต่างนี้ หรือปิดหน้าต่างนี้ทิ้ง")
     print("  (หน้าต่างนี้ต้องเปิดค้างไว้ตลอดเวลาที่ใช้งานเว็บ)\n")
 

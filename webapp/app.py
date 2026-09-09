@@ -316,16 +316,20 @@ def create_app(settings: AppSettings | None = None) -> Flask:
                     )
                 if not settings_obj.ocr_ready:
                     raise GradingError(
-                        "โหมดตรวจจริงต้องตั้ง google_credentials_path ใน settings.json ก่อน "
-                        "(ใช้อ่านลายมือด้วย Google Vision) — ระหว่างนี้เลือกโหมดลองใช้งานได้"
+                        "โหมดตรวจจริงต้องตั้ง anthropic_api_key ใน settings.json ก่อน "
+                        "(ใช้อ่านลายมือจากรูป) — ระหว่างนี้เลือกโหมดลองใช้งานได้"
                     )
                 try:
-                    from grading.ocr import GoogleVisionOcrProvider
+                    from grading.ocr import ClaudeVisionOcrProvider
 
-                    ocr_results = GoogleVisionOcrProvider().extract_from_crops(crops)
+                    ocr_results = ClaudeVisionOcrProvider(
+                        model=settings_obj.claude_model
+                    ).extract_from_crops(crops)
+                # จับกว้าง ๆ ตั้งใจ — คีย์ผิด/เน็ตหลุด/ยังไม่ได้ pip install anthropic
+                # ครูควรเห็นข้อความไทยที่บอกว่าต้องไปแก้อะไร ไม่ใช่ traceback ดิบ
                 except Exception as exc:
-                    raise GradingError(f"เรียก Google Vision ไม่สำเร็จ: {exc}") from exc
-                ocr_mode = "vision"
+                    raise GradingError(f"อ่านลายมือด้วย Claude ไม่สำเร็จ: {exc}") from exc
+                ocr_mode = "claude"
             else:
                 ocr_results = _mock_ocr_results(config)
                 ocr_mode = "mock"
@@ -432,6 +436,14 @@ def create_app(settings: AppSettings | None = None) -> Flask:
                     settings_obj.spreadsheet_id, settings_obj.google_credentials_path
                 )
                 target = f"Google Sheets ({settings_obj.spreadsheet_id})"
+            except ImportError as exc:
+                # ไลบรารีของ Google ไม่ได้อยู่ใน requirements.txt หลักแล้ว (ตรวจข้อสอบไม่ต้องใช้)
+                # บอกคำสั่งติดตั้งไปเลย ครูจะได้ไม่ต้องไปหาเอง
+                raise GradingError(
+                    f"ยังไม่ได้ติดตั้งไลบรารีของ Google ({exc}) — เปิด PowerShell ที่โฟลเดอร์นี้ "
+                    "แล้วพิมพ์: pip install -r requirements-google.txt "
+                    'หรือเปลี่ยน sheet.mode กลับเป็น "csv" ก็บันทึกได้เลยโดยไม่ต้องติดตั้งอะไร'
+                ) from exc
             except Exception as exc:
                 raise GradingError(f"ต่อ Google Sheets ไม่สำเร็จ: {exc}") from exc
         else:

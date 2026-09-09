@@ -32,7 +32,7 @@ Word/Google Docs ใช้ไม่ได้ (ไม่มีรูปให้�
 
 (บน macOS/Linux หรือถ้าอยากสั่งเอง: `python web_app.py`)
 
-ครั้งแรกต้องติดตั้งไลบรารีก่อนหนึ่งครั้ง: `pip install -r requirements.txt`
+ครั้งแรกที่เปิดในเครื่องใหม่ ตัว `.bat` จะติดตั้งไลบรารีที่ต้องใช้ให้เองรอบเดียว (ใช้เวลา 2-3 นาที) ไม่ต้องพิมพ์คำสั่งเอง — ถ้าสั่งรันเองบน macOS/Linux ให้พิมพ์ `pip install -r requirements.txt` ก่อนหนึ่งครั้ง
 
 **เปิดครั้งแรกใช้ได้ทันทีโดยไม่ต้องมี API key** — เลือกโหมด "ลองใช้งานก่อน" จะใช้คำตอบตัวอย่าง
 แสดงให้ดูว่าหน้าตาผลลัพธ์เป็นอย่างไร ไม่ต้องมีรูป ไม่ต้องตั้งค่าอะไรเลย
@@ -50,16 +50,37 @@ Word/Google Docs ใช้ไม่ได้ (ไม่มีรูปให้�
 ไม่ต้อง `export ANTHROPIC_API_KEY=...` ใหม่ทุกครั้งที่เปิด terminal เหมือนเมื่อก่อน
 (`settings.json` ถูก `.gitignore` ไว้แล้ว ไม่หลุดขึ้น GitHub)
 
+**ค่าเดียวที่ต้องใส่จริง ๆ คือ `anthropic_api_key`** ใส่แล้วโหมดตรวจจริงทำงานได้ครบทั้งสาย
+ไม่ต้องเปิดบัญชี Google Cloud ไม่ต้องผูกบัตรกับคลาวด์เจ้าอื่น
+
 | ค่า | ใช้ทำอะไร | ไม่ใส่แล้วเป็นอย่างไร |
 |---|---|---|
-| `anthropic_api_key` | ให้ Claude ตรวจข้อบรรยาย (ข้อ 4) | ข้อบรรยายถอยไปใช้ `MockSemanticGrader` พร้อมเตือนบนหน้าจอ |
-| `claude_model` | เลือกโมเดล | ใช้ `claude-sonnet-4-6` ตาม default เดิมของ `ClaudeSemanticGrader` |
-| `google_credentials_path` | อ่านลายมือด้วย Google Vision | **โหมดตรวจจริงกดไม่ได้เลย** |
+| `anthropic_api_key` | ใช้ทั้ง **อ่านลายมือจากรูป** และ **ตรวจข้อบรรยาย (ข้อ 4)** | **โหมดตรวจจริงกดไม่ได้เลย** ใช้ได้แต่โหมดลองใช้งาน |
+| `claude_model` | เลือกโมเดล | ใช้ `claude-opus-5` (อ่านลายมือแม่นสุด) · อยากประหยัดเปลี่ยนเป็น `claude-sonnet-5` ได้ |
+| `google_credentials_path` | service account ของ Google — ใช้เฉพาะตอนบันทึกลง Google Sheets | ไม่กระทบการตรวจเลย บันทึกลงไฟล์ CSV ได้ตามปกติ |
 | `sheet.mode` | `csv` = ลงไฟล์ในเครื่อง / `google` = ลง Google Sheets | ใช้ `csv` |
 | `sheet.spreadsheet_id` | รหัสใน URL ของ Sheet | ถ้าเลือก `google` แล้วไม่ใส่ จะขึ้นเตือนในหน้า "สถานะระบบ" |
 
+ขอคีย์ที่ [console.anthropic.com](https://console.anthropic.com) > API keys > Create key
+แล้ววางลงในช่อง `anthropic_api_key` (คีย์ขึ้นต้นด้วย `sk-ant-`) ต้องเติมเครดิตในบัญชีก่อน
+คีย์ถึงจะใช้ได้ — ค่าใช้จ่ายประเมินคร่าว ๆ อยู่ราวไม่กี่บาทต่อนักเรียนหนึ่งคน (ตรวจ 1 คน =
+ส่งภาพไปอ่าน 12 ครั้ง ข้อละครั้ง บวกอีก 1 ครั้งสำหรับตรวจข้อบรรยาย) ถ้าเปลี่ยนไปใช้
+`claude-sonnet-5` จะถูกลงอีก ตัวเลขจริงดูได้ที่หน้า Usage ใน console หลังตรวจจริงไปแล้วสัก 2-3 คน
+
 หน้าเว็บมีปุ่ม **"สถานะระบบ"** มุมขวาบน กดดูได้ตลอดว่าตอนนี้ต่อของจริงหรือของจำลองอยู่
 และถ้า `settings.json` มีปัญหา (JSON เสีย, path ไม่มีจริง) จะเด้งบอกตรงนั้นเลย
+
+### เริ่มตรวจจริงวันแรก — ทำ 4 ขั้นนี้
+
+1. **คัดลอก `settings.example.json` เป็น `settings.json`** แล้วใส่คีย์ในช่อง `anthropic_api_key`
+   (คีย์เดียวจบ ไม่ต้องตั้งอย่างอื่น) แล้วเปิดโปรแกรมใหม่ ให้ปุ่ม **"ตรวจจริง"** กดได้
+2. **ตรวจกระดาษที่ครูเคยตรวจด้วยมือไปแล้ว 1-2 ใบก่อน** แล้วเทียบคะแนนกับที่ตรวจเอง
+   ถ้าตรงกันค่อยเดินหน้าตรวจทั้งห้อง ถ้าเพี้ยนเป็นบางข้อให้ดูช่อง "คำตอบที่อ่านได้"
+   ในหน้าเว็บว่าอ่านลายมือผิด หรือกรอบตัดภาพ (`config/regions.json`) เลื่อน
+3. **ข้อที่ขึ้นว่า "ต้องตรวจสอบ" ครูต้องดูเองทุกข้อ** ระบบตั้งใจไม่ตัดสินเองเมื่อไม่มั่นใจ
+   — อ่านลายมือเด็กด้วยเครื่องยังไงก็มีพลาด จุดนี้คือด่านที่กันคะแนนผิดไปถึงมือนักเรียน
+4. **สแกนให้เหมือนกันทุกใบ** (เครื่องเดิม ความละเอียดเดิม วางกระดาษชิดขอบไม่เอียง)
+   เพราะกรอบตัดภาพต่อข้อวัดไว้จากกระดาษที่สแกนด้วยค่าชุดนั้น
 
 ### สิ่งที่ยังต้องใช้ terminal
 
@@ -82,7 +103,7 @@ grading_app/
 │   │                          # + imread/imwrite_unicode สำหรับ path ที่มีภาษาไทย
 │   ├── regions.py            # ตัด crop เฉพาะพื้นที่คำตอบแต่ละข้อ จากภาพที่ align แล้ว
 │   ├── pdf_pages.py          # แตกภาพหน้า 1/หน้า 2 ออกจากไฟล์ PDF ที่สแกนมา (pypdf)
-│   ├── ocr.py                # ดึงคำตอบจากภาพที่ crop แล้ว (Google Vision จริง + mock)
+│   ├── ocr.py                # ดึงคำตอบจากภาพที่ crop แล้ว (Claude อ่านลายมือ + Google Vision + mock)
 │   ├── sheets_writer.py      # บันทึกผลลง Google Sheet (จริง + CSV dry-run สำหรับทดสอบ)
 │   ├── pipeline.py            # ประกอบทุกอย่างเข้าด้วยกัน ตรวจนักเรียน 1 คนครบทุกข้อ
 │   ├── settings.py            # โหลด settings.json ครั้งเดียว ใช้ร่วมกันทั้งเว็บแอปและ grade_exam.py
@@ -110,7 +131,8 @@ grading_app/
 │   ├── test_sdk_contract.py          # ใช้ SDK ตัวจริง (ไม่ปลอมโมดูล) จับกรณีไลบรารีอัปเวอร์ชันแล้วเปลี่ยน API
 │   ├── test_webapp.py                # เว็บแอปทุก endpoint + settings.py (จับคะแนนลงผิดคอลัมน์)
 │   └── test_webapp_ui.mjs            # หน้าเว็บฝั่งเบราว์เซอร์ด้วย jsdom (กันบันทึกซ้ำ, ล้างของคนเก่า)
-├── requirements.txt
+├── requirements.txt    # ของที่ต้องใช้จริง — .bat ติดตั้งให้เองรอบแรก
+├── requirements-google.txt  # ส่วนเสริม ติดตั้งเฉพาะถ้าจะบันทึกลง Google Sheets
 ├── ruff.toml           # ล็อกชุดกฎ lint ไว้ ไม่ให้ผลตรวจเปลี่ยนตามเวอร์ชัน ruff
 ├── .gitignore          # กัน credentials / settings.json / ภาพกระดาษคำตอบของนักเรียน / ไฟล์ผลลัพธ์
 └── .gitattributes      # ล็อกไฟล์ข้อความทุกไฟล์เป็น LF (ยกเว้น .csv ที่ต้องเป็น CRLF)
@@ -270,10 +292,14 @@ CI จึงจับได้จริงไม่ใช่เขียวห�
 ## สลับจาก Mock ไปใช้ของจริง
 
 ```python
-from grading.llm_grader import ClaudeSemanticGrader   # แทน MockSemanticGrader
-from grading.ocr import GoogleVisionOcrProvider         # แทน MockOcrProvider
-from grading.sheets_writer import GoogleSheetsWriter     # แทน CsvDryRunWriter
+from grading.llm_grader import ClaudeSemanticGrader     # แทน MockSemanticGrader
+from grading.ocr import ClaudeVisionOcrProvider          # แทน MockOcrProvider
+from grading.sheets_writer import GoogleSheetsWriter      # แทน CsvDryRunWriter (จะใช้ Sheets เท่านั้น)
 ```
+
+`GoogleVisionOcrProvider` ยังอยู่ในไฟล์เดิมและใช้ได้อยู่ (`grade_exam.py --ocr vision`)
+สำหรับคนที่มี service account ของ Google Cloud อยู่แล้ว แต่เว็บแอปใช้ `ClaudeVisionOcrProvider`
+ทางเดียว เพื่อให้ครูตั้งค่าที่เดียวจบ
 
 ทุกโมดูลออกแบบเป็น interface เดียวกัน (`.grade()`, `.extract()`, `.append_row()`)
 สลับตัวจริง/ตัว mock ได้โดยไม่ต้องแก้โค้ดส่วน `pipeline.py` เลย
@@ -283,8 +309,11 @@ from grading.sheets_writer import GoogleSheetsWriter     # แทน CsvDryRunWr
 ```bash
 pip install -r requirements.txt
 
-export ANTHROPIC_API_KEY="..."                          # สำหรับ ClaudeSemanticGrader
-export GOOGLE_APPLICATION_CREDENTIALS="/path/service-account.json"   # สำหรับ GoogleVisionOcrProvider
+export ANTHROPIC_API_KEY="..."   # ใช้ทั้ง ClaudeVisionOcrProvider และ ClaudeSemanticGrader
+# ปกติไม่ต้องตั้ง env เอง — ใส่ใน settings.json ครั้งเดียวแล้วทั้งเว็บแอปและ grade_exam.py อ่านให้เอง
+
+# เฉพาะถ้าจะบันทึกลง Google Sheets เท่านั้น:
+pip install -r requirements-google.txt
 # GoogleSheetsWriter รับ credentials_path ตรงๆ ตอนสร้าง instance (ดู docstring ในไฟล์)
 ```
 

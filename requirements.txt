@@ -15,12 +15,9 @@ opencv-python-headless>=4.9.0
 numpy>=1.26.0
 pillow>=10.0.0
 
-# ต่อ LLM grader จริงสำหรับข้อคำตอบบรรยาย (เช่น ข้อ 4)
+# โหมดตรวจจริงทั้งสาย: อ่านลายมือจากรูป (ocr.py) + ตรวจข้อบรรยาย (llm_grader.py)
+# ทั้งสองอย่างใช้คีย์ Anthropic ใบเดียวกัน ไม่ต้องมีบัญชีคลาวด์อื่นเลย
 anthropic>=0.40.0
 
-# ต่อ OCR จริงด้วย Google Cloud Vision
-google-cloud-vision>=3.7.0
-
-# เขียนผลคะแนนลง Google Sheets จริง
-google-api-python-client>=2.130.0
-google-auth>=2.30.0
+# ของ Google (Sheets / Vision) ไม่อยู่ในไฟล์นี้ ไม่ต้องติดตั้งก็ตรวจข้อสอบได้ครบ
+# ถ้าจะบันทึกลง Google Sheets แทน CSV: pip install -r requirements-google.txt

@@ -14,6 +14,7 @@ import json
 import re
 from typing import Protocol
 
+from .settings import DEFAULT_CLAUDE_MODEL
 from .similarity import normalize_text
 
 
@@ -23,7 +24,8 @@ class SemanticGrader(Protocol):
         ...
 
 
-def _strip_code_fence(text: str) -> str:
+def strip_code_fence(text: str) -> str:
+    """ตัด ```json ... ``` ที่โมเดลชอบห่อ JSON มาให้ — ใช้ร่วมกับ ocr.py"""
     text = text.strip()
     text = re.sub(r"^```(json)?", "", text).strip()
     return re.sub(r"```$", "", text).strip()
@@ -49,7 +51,7 @@ class ClaudeSemanticGrader:
     และตั้งค่า environment variable ANTHROPIC_API_KEY
     """
 
-    def __init__(self, model: str = "claude-sonnet-4-6", api_key: str | None = None):
+    def __init__(self, model: str = DEFAULT_CLAUDE_MODEL, api_key: str | None = None):
         from anthropic import (
             Anthropic,  # import แบบ lazy กันไม่ให้ทั้งไฟล์พังถ้ายังไม่ได้ pip install
         )
@@ -72,7 +74,7 @@ class ClaudeSemanticGrader:
         raw_text = "".join(
             block.text for block in response.content if getattr(block, "type", None) == "text"
         )
-        data = json.loads(_strip_code_fence(raw_text))
+        data = json.loads(strip_code_fence(raw_text))
         percent = float(data["similarity_percent"])
         reasoning = str(data.get("reasoning", ""))
         return max(0.0, min(100.0, percent)), reasoning

@@ -1,0 +1,10 @@
+# ส่วนเสริมของ Google — ติดตั้งเฉพาะเมื่อจะใช้จริง ไม่ติดตั้งก็ตรวจข้อสอบได้ครบทุกข้อ
+#     pip install -r requirements-google.txt
+
+# เขียนผลคะแนนลง Google Sheets แทนไฟล์ CSV (settings.json > sheet.mode = "google")
+google-api-python-client>=2.130.0
+google-auth>=2.30.0
+
+# ทางเลือกเดิมของการอ่านลายมือ (grade_exam.py --ocr vision) สำหรับคนที่มี service
+# account ของ Google Cloud อยู่แล้ว — เว็บแอปใช้ Claude อ่านลายมือแทนแล้ว ไม่ต้องใช้ตัวนี้
+google-cloud-vision>=3.7.0

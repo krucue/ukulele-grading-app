@@ -36,6 +36,15 @@ def check(name: str, condition: bool):
         print(f"  [FAIL] {name}")
 
 
+def cv2_decode_png(data: bytes):
+    """แปลง PNG bytes กลับเป็นภาพ ใช้ตรวจว่าโค้ดส่งภาพขนาดเท่าไหร่ไปให้โมเดล"""
+    import cv2
+    import numpy as np
+
+    return cv2.imdecode(np.frombuffer(data, np.uint8), cv2.IMREAD_COLOR)
+
+
+
 # ============================================================
 # 1) ClaudeSemanticGrader — ปลอม anthropic.Anthropic ทั้งโมดูล
 # ============================================================
@@ -101,6 +110,72 @@ check("prompt ที่ส่งมีคำตอบนักเรียนแ
 grader.client.messages._canned_text = '```json\n{"similarity_percent": 55, "reasoning": "ok"}\n```'
 percent2, _ = grader.grade(question, "คำตอบอะไรสักอย่าง")
 check("parse ได้แม้ Claude ห่อ JSON ด้วย code fence", percent2 == 55.0)
+
+# ============================================================
+# 1.5) ClaudeVisionOcrProvider — อ่านลายมือด้วย Claude (ยังใช้ anthropic ปลอมตัวเดิม)
+# ============================================================
+print("\nClaudeVisionOcrProvider (mock anthropic SDK)")
+
+import base64  # noqa: E402
+
+import numpy as np  # noqa: E402
+
+from grading.ocr import ClaudeVisionOcrProvider  # noqa: E402
+
+_FAKE_OCR_JSON = '{"text": "ดีดพร้อมกันหลายสาย", "confidence": 0.82}'
+
+ocr = ClaudeVisionOcrProvider(api_key="fake-key-for-test")
+ocr.client.messages._canned_text = _FAKE_OCR_JSON
+
+# ภาพ crop ขนาดเท่าของจริงที่ได้จาก regions.json (กว้าง 648 สูง 59 บนกระดาษ 150 DPI)
+crop = np.full((59, 648, 3), 255, np.uint8)
+results = ocr.extract_from_crops({"1.1": crop})
+check("อ่านข้อความจาก JSON ที่ Claude ตอบได้", results["1.1"].text == "ดีดพร้อมกันหลายสาย")
+check("อ่าน confidence ได้", abs(results["1.1"].confidence - 0.82) < 1e-6)
+
+sent = ocr.client.messages.last_kwargs
+content = sent["messages"][0]["content"]
+image_blocks = [b for b in content if b.get("type") == "image"]
+check("ส่งภาพไปด้วยจริง 1 รูปต่อ 1 ข้อ", len(image_blocks) == 1)
+check(
+    "ส่งเป็น base64 PNG ตามที่ Messages API ต้องการ",
+    image_blocks[0]["source"]["type"] == "base64"
+    and image_blocks[0]["source"]["media_type"] == "image/png",
+)
+decoded = base64.standard_b64decode(image_blocks[0]["source"]["data"])
+check("ข้อมูลที่ส่งเป็นไฟล์ PNG จริง", decoded[:8] == b"\x89PNG\r\n\x1a\n")
+
+# ภาพ crop สูงแค่ 59 px เล็กเกินกว่าจะอ่านลายมือได้ ต้องถูกขยายก่อนส่งเสมอ
+sent_image = cv2_decode_png(decoded)
+check(
+    "ขยายภาพก่อนส่งให้สูงพอจะอ่านลายมือได้",
+    sent_image.shape[0] > 59,
+)
+check(
+    "ไม่ขยายจนเกินความกว้างที่โมเดลใช้ประโยชน์ได้",
+    sent_image.shape[1] <= 1568,
+)
+
+prompt_text = "".join(b["text"] for b in content if b.get("type") == "text")
+check("บอกโมเดลว่านี่คือข้อไหน", "1.1" in prompt_text)
+check("สั่งห้ามเดาคำตอบให้เอง", "ห้ามตอบคำถามในข้อสอบเอง" in prompt_text)
+
+# confidence เกิน 1 ต้องถูกหั่นลง ไม่งั้น threshold ในเฉลย (0.75) จะเทียบไม่ตรง
+ocr.client.messages._canned_text = '{"text": "ก", "confidence": 1.5}'
+check("confidence เกิน 1 ถูกหั่นเหลือ 1.0", ocr.extract_from_crops({"3": crop})["3"].confidence == 1.0)
+
+# ตอบไม่เป็น JSON = อ่านไม่ออก ต้องได้ confidence 0 เพื่อให้ scorer ส่งเข้าคิวครูตรวจ
+# ห้ามเดาเอาข้อความดิบมาเป็นคำตอบนักเรียน
+ocr.client.messages._canned_text = "ขอโทษครับ ผมอ่านลายมือนี้ไม่ออก"
+fallback = ocr.extract_from_crops({"3": crop})["3"]
+check("ตอบไม่เป็น JSON -> ข้อความว่าง", fallback.text == "")
+check("ตอบไม่เป็น JSON -> confidence 0 (เข้าคิวให้ครูตรวจ)", fallback.confidence == 0.0)
+
+# ยิงหลายข้อพร้อมกันด้วย thread ต้องจับคู่ผลกลับเข้าข้อเดิมให้ครบและไม่สลับกัน
+ocr.client.messages._canned_text = _FAKE_OCR_JSON
+many = ocr.extract_from_crops(dict.fromkeys(["1.1", "1.2", "2.1", "5.4"], crop))
+check("ตรวจหลายข้อพร้อมกันแล้วได้ครบทุกข้อ", sorted(many) == ["1.1", "1.2", "2.1", "5.4"])
+
 
 del sys.modules["anthropic"]  # เคลียร์ไม่ให้กระทบเทสอื่น
 

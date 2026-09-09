@@ -71,10 +71,7 @@ async function loadStatus() {
     realInput.disabled = true;
     $("realMode").classList.add("disabled");
     $("realModeNote").textContent =
-      "ยังใช้ไม่ได้ — ต้องตั้ง google_credentials_path ใน settings.json ก่อน (ใช้อ่านลายมือจากรูป)";
-  } else if (!data.ready.llm) {
-    $("realModeNote").textContent =
-      "อ่านลายมือด้วย Google Vision ได้แล้ว แต่ยังไม่ได้ตั้ง anthropic_api_key — ข้อบรรยายจะใช้โหมดจำลอง";
+      "ยังใช้ไม่ได้ — ต้องตั้ง anthropic_api_key ใน settings.json ก่อน (ใช้อ่านลายมือจากรูปและตรวจข้อบรรยาย)";
   }
 }
 
