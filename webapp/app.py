@@ -14,6 +14,7 @@ import json
 import os
 import shutil
 import tempfile
+import time
 from pathlib import Path
 
 from flask import Flask, jsonify, render_template, request
@@ -45,6 +46,24 @@ ALLOWED_IMAGE_SUFFIXES = {".jpg", ".jpeg", ".png", ".bmp", ".webp", ".tif", ".ti
 ALLOWED_PDF_SUFFIXES = {".pdf"}
 
 MAX_UPLOAD_BYTES = 25 * 1024 * 1024  # รูปจากมือถือปกติ 3-8 MB ต่อหน้า, PDF สแกน 2-10 MB
+
+
+# โฟลเดอร์ที่มีโค้ดของโปรแกรม ใช้เช็คว่าไฟล์ถูกแก้หลังจากเซิร์ฟเวอร์ตัวนี้เริ่มทำงานไปแล้วหรือยัง
+SOURCE_DIRS = ("grading", "webapp")
+SOURCE_FILES = ("web_app.py", "grade_exam.py")
+
+
+def newest_source_mtime() -> float:
+    """เวลาแก้ไขล่าสุดของไฟล์โค้ดทั้งหมดในโปรเจกต์"""
+    newest = 0.0
+    for name in SOURCE_FILES:
+        path = PROJECT_ROOT / name
+        if path.exists():
+            newest = max(newest, path.stat().st_mtime)
+    for folder in SOURCE_DIRS:
+        for path in (PROJECT_ROOT / folder).rglob("*.py"):
+            newest = max(newest, path.stat().st_mtime)
+    return newest
 
 
 class GradingError(Exception):
@@ -193,6 +212,12 @@ def create_app(settings: AppSettings | None = None) -> Flask:
     app.config["MAX_CONTENT_LENGTH"] = MAX_UPLOAD_BYTES
     app.config["SETTINGS"] = settings if settings is not None else load_settings()
     app.config["SETTINGS"].apply_to_env()
+    # หน้าเว็บโหลด js/css ใหม่จากดิสก์ทุกครั้ง แต่โค้ด Python ถูกอ่านเข้าหน่วยความจำ
+    # ตอนเปิดโปรแกรมครั้งเดียว ถ้ามีการอัปเดตโปรแกรมระหว่างที่ครูเปิดค้างไว้ หน้าเว็บ
+    # จะเป็นตัวใหม่แต่เซิร์ฟเวอร์เป็นตัวเก่า อาการที่เจอจริงคือหน้าเว็บบอกว่าตรวจจริง
+    # ไม่ได้ทั้งที่โค้ดใหม่ทำได้แล้ว แล้วฟอร์มถูกส่งเป็นโหมดลองใช้งานโดยครูไม่รู้ตัว
+    app.config["STARTED_AT"] = time.time()
+    app.config["SOURCE_MTIME_AT_START"] = newest_source_mtime()
 
     def current_settings() -> AppSettings:
         return app.config["SETTINGS"]
@@ -247,9 +272,13 @@ def create_app(settings: AppSettings | None = None) -> Flask:
         except GradingError as exc:
             exam = {"error": str(exc)}
 
+        # เผื่อ 2 วินาที กันเรื่องความละเอียดของ mtime บนไฟล์ระบบบางตัว
+        stale = newest_source_mtime() > app.config["SOURCE_MTIME_AT_START"] + 2
+
         return jsonify(
             {
                 "settings_file": settings_obj.loaded_from,
+                "stale_server": stale,
                 "problems": settings_obj.problems,
                 "status_lines": settings_obj.status_lines(),
                 "ready": {

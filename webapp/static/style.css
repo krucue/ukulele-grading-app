@@ -177,3 +177,23 @@ input.score-input.edited { border-color: var(--ochre); background: #FFFBF4; }
   margin-bottom: 4px;
   font-size: 1.05em;
 }
+
+/* แถบเตือนว่าเซิร์ฟเวอร์ที่รันอยู่เป็นคนละรุ่นกับไฟล์บนดิสก์ — สีแดงเพราะทุกอย่าง
+   ที่ทำต่อจากนี้เชื่อไม่ได้ ต้องเปิดโปรแกรมใหม่ก่อน */
+.stale-banner {
+  display: block;
+  margin: 0 0 16px;
+  padding: 14px 16px;
+  border: 2px solid #B3261E;
+  border-left-width: 8px;
+  border-radius: 8px;
+  background: #FDECEA;
+  color: #7A1C15;
+  line-height: 1.6;
+}
+
+.stale-banner strong {
+  display: block;
+  margin-bottom: 4px;
+  font-size: 1.05em;
+}

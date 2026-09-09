@@ -74,6 +74,7 @@ const statusJson = {
   settings_file: null,
   problems: [],
   status_lines: ["อ่านลายมือ (OCR): โหมดจำลอง — ยังไม่ได้ตั้ง anthropic_api_key"],
+  stale_server: false,
   ready: { ocr: false, llm: false, sheets: false, real: false },
   sheet_target: "ไฟล์ ผลตรวจ.csv",
   exam: { exam_id: "ukulele-p5", total_score: 15, questions: [], problems: [] },
@@ -302,6 +303,25 @@ const savesBefore = saveCalls;
 click("saveBtn");
 await tick();
 check("ถึงจะสั่งกดปุ่มบันทึกตรง ๆ ก็ไม่ยิงไปที่ /api/save", saveCalls === savesBefore);
+
+
+// ---------- เซิร์ฟเวอร์คนละรุ่นกับไฟล์บนดิสก์ ----------
+// เกิดขึ้นจริงเมื่ออัปเดตโปรแกรมระหว่างที่ครูเปิดหน้าต่างสีดำค้างไว้: หน้าเว็บเป็นตัวใหม่
+// (โหลดจากดิสก์ทุกครั้ง) แต่เซิร์ฟเวอร์เป็นตัวเก่า ปุ่มตรวจจริงเลยกดไม่ได้ทั้งที่โค้ดใหม่ทำได้แล้ว
+console.log("");
+console.log("เตือนเมื่อเซิร์ฟเวอร์ที่รันอยู่เป็นคนละรุ่นกับไฟล์บนดิสก์");
+check("ปกติไม่ขึ้นแถบเตือน", $("staleBanner").hidden);
+
+statusJson.stale_server = true;
+// app.js เรียก loadStatus() เองตอนโหลด — โหลดสคริปต์ซ้ำจึงเท่ากับให้มันอ่านสถานะใหม่
+// (ทำเป็นชุดสุดท้ายของไฟล์นี้โดยตั้งใจ เพราะการ eval ซ้ำจะผูก event listener ซ้อนอีกชุด)
+window.eval(appJs);
+await tick();
+check("status บอกว่า stale -> ขึ้นแถบเตือน", !$("staleBanner").hidden);
+check(
+  "บอกวิธีแก้ตรง ๆ ว่าให้เปิดโปรแกรมใหม่",
+  $("staleBanner").textContent.includes("เปิดโปรแกรมตรวจข้อสอบ.bat")
+);
 
 
 console.log(`\nผ่าน ${passed} ตก ${failed}`);

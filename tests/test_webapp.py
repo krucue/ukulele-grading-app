@@ -171,6 +171,8 @@ with tempfile.TemporaryDirectory() as tmpdir:
     )
     check("/api/status บอกว่ายังตรวจจริงไม่ได้", status["ready"]["real"] is False)
     check("/api/status บอกปลายทางที่จะบันทึก", "ผลตรวจ.csv" in status["sheet_target"])
+    # เซิร์ฟเวอร์ที่เพิ่งเปิดต้องไม่ฟ้องว่าตัวเองเก่า ไม่งั้นครูจะเจอแถบแดงตลอดเวลา
+    check("/api/status บอกว่าเซิร์ฟเวอร์เป็นรุ่นเดียวกับไฟล์บนดิสก์", status["stale_server"] is False)
 
     # ---------- หน้าเว็บโหลดได้ ----------
     res = client.get("/")

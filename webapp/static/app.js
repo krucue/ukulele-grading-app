@@ -63,6 +63,9 @@ async function loadStatus() {
     $("statusToggle").setAttribute("aria-expanded", "true");
   }
 
+  // เซิร์ฟเวอร์ที่รันอยู่เป็นคนละรุ่นกับไฟล์บนดิสก์ = ทุกอย่างหลังจากนี้เชื่อไม่ได้
+  $("staleBanner").hidden = !data.stale_server;
+
   $("saveTarget").textContent = `จะบันทึกลง: ${data.sheet_target}`;
 
   // โหมดตรวจจริงกดไม่ได้ถ้ายังไม่ได้ตั้ง credentials — บอกเหตุผลตรงนั้นเลย
