@@ -115,9 +115,39 @@ def main() -> None:
         # หน่วงนิดหนึ่งให้เซิร์ฟเวอร์ตื่นก่อน ไม่งั้นเบราว์เซอร์ขึ้น "ต่อไม่ได้"
         threading.Timer(1.0, lambda: webbrowser.open(url)).start()
 
+    # ดันข้อความข้างบนออกจอให้หมดก่อนเข้าลูปเซิร์ฟเวอร์ที่บล็อกยาว — ถ้า stdout ถูก
+    # redirect ลงไฟล์ (เช่นเปิดผ่านสคริปต์อื่น) ข้อความจะค้างอยู่ในบัฟเฟอร์จนโปรแกรมปิด
+    sys.stdout.flush()
+
     app = create_app(settings)
-    # debug=False เสมอ — debugger ของ Flask เปิดช่องรันโค้ดผ่านหน้าเว็บได้
-    app.run(host=args.host, port=port, debug=False)
+    serve(app, args.host, port)
+
+
+def serve(app, host: str, port: int) -> None:
+    """เปิดเซิร์ฟเวอร์แบบเงียบ ๆ ไม่พ่นข้อความของ Flask ปนกับข้อความของเรา
+
+    ไม่ใช้ app.run() เพราะมันพิมพ์คำเตือน "This is a development server. Do not use it
+    in a production deployment." ซึ่งถูกต้องในบริบทของนักพัฒนา แต่ทำให้ครูตกใจว่าโปรแกรม
+    มีปัญหา ทั้งที่โปรแกรมนี้ตั้งใจให้รันบนเครื่องครูคนเดียวที่ 127.0.0.1 อยู่แล้ว
+    ไม่ได้เอาไปเปิดเป็นเว็บสาธารณะ
+
+    threaded=True สำคัญ ไม่ใช่ใส่เผื่อ — ตอนตรวจจริงคำขอหนึ่งกินเวลาเป็นนาที
+    (รออ่านลายมือกับตัดสินคะแนน) ถ้าเป็นเซิร์ฟเวอร์เธรดเดียว หน้าเว็บจะค้างทั้งหน้า
+    กดอะไรไม่ได้เลยระหว่างนั้น รวมถึงเปิดหน้าสถานะระบบดูก็ไม่ได้
+    """
+    try:
+        from werkzeug.serving import make_server
+    except ImportError:
+        # เผื่อ werkzeug รุ่นที่ไม่มี make_server — ยอมให้มีคำเตือนดีกว่าเปิดโปรแกรมไม่ได้
+        # debug=False เสมอ — debugger ของ Flask เปิดช่องรันโค้ดผ่านหน้าเว็บได้
+        app.run(host=host, port=port, debug=False)
+        return
+
+    server = make_server(host, port, app, threaded=True)
+    try:
+        server.serve_forever()
+    except KeyboardInterrupt:
+        print("\n  ปิดโปรแกรมแล้ว")
 
 
 if __name__ == "__main__":

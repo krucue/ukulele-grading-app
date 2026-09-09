@@ -149,7 +149,17 @@ except ImportError:
 
 # ต้อง import หลังเช็ค flask ด้านบน ไม่งั้นเครื่องที่ยังไม่ได้ pip install
 # จะตายตั้งแต่บรรทัด import แทนที่จะได้ข้อความบอกวิธีแก้
+import web_app  # noqa: E402
 from webapp import create_app  # noqa: E402
+
+# web_app.py คือไฟล์ที่ .bat เรียก เป็นทางเข้าหลักของครู แต่ไม่มีเทสไหนแตะเลย
+# แค่ import ให้ผ่านก็กัน syntax error ที่จะทำให้ครูดับเบิลคลิกแล้วไม่มีอะไรขึ้นได้แล้ว
+check("web_app.py import ได้ (ไฟล์ที่ .bat เรียก)", callable(web_app.main))
+check("เปิดเซิร์ฟเวอร์ผ่าน serve() ที่ตัดคำเตือนของ Flask ออก", callable(web_app.serve))
+check(
+    "serve() ใช้ make_server แบบ threaded ไม่ใช่ app.run",
+    "make_server" in Path(web_app.__file__).read_text(encoding="utf-8"),
+)
 
 config = load_config(PROJECT_ROOT / "config" / "answer_key_config.json")
 
