@@ -18,6 +18,7 @@ from typing import Protocol
 
 import numpy as np
 
+from .claude_cli import DEFAULT_TIMEOUT_SECONDS, require_claude_cli, run_claude_cli
 from .llm_grader import strip_code_fence
 from .settings import DEFAULT_CLAUDE_MODEL
 
@@ -191,6 +192,117 @@ class ClaudeVisionOcrProvider:
         """ให้ตรง protocol OcrProvider — ตัวนี้ต้องใช้ภาพที่ crop แล้วเท่านั้น"""
         raise ValueError(
             "ClaudeVisionOcrProvider ต้องใช้ extract_from_crops() กับภาพที่ตัดต่อข้อแล้ว "
+            "(ดู grading/regions.py) ไม่รับภาพเต็มหน้า"
+        )
+
+
+# ---------------------------------------------------------------------------
+# อ่านลายมือผ่าน claude CLI ที่ติดตั้งในเครื่อง — ไม่ต้องมี API key
+# ---------------------------------------------------------------------------
+
+CLAUDE_CLI_PROMPT = """อ่านลายมือนักเรียนจากภาพนี้: {image_path}
+
+ภาพนี้คือช่องคำตอบของนักเรียนหนึ่งคน ตัดมาเรียงต่อกันลงมา มีป้ายเลขข้อสีแดงกำกับไว้ซ้ายมือ
+ข้อที่ต้องอ่านคือ: {question_ids}
+
+กติกาการถอดข้อความ:
+- ถอดตามที่เห็นจริง ห้ามแก้คำสะกดผิด ห้ามเติมคำที่ขาด
+- ห้ามตอบคำถามในข้อสอบเอง ถ้าช่องไหนไม่มีลายมือให้คืนข้อความว่าง
+- ข้ามเส้นบรรทัด กรอบ และตัวอักษรที่พิมพ์มากับกระดาษ เอาเฉพาะที่นักเรียนเขียน
+- คำว่า "ตอบ" หรือ "Answer" ต้นบรรทัด และข้อความคำถามที่ติดมาขอบภาพ เป็นของที่พิมพ์มา
+  ในข้อสอบ ไม่ใช่คำตอบของนักเรียน ห้ามเอามาด้วย
+- รอยปากกาสีแดงหรือตัวเลขที่ครูเขียนตรวจไว้ ไม่ใช่คำตอบของนักเรียนเช่นกัน
+- ถ้าคำตอบข้อไหนมีหลายบรรทัด ให้ต่อกันเป็นบรรทัดเดียวคั่นด้วยช่องว่าง
+
+confidence คือความมั่นใจว่าอ่านถูก ประเมินตามจริง อย่าให้สูงไว้ก่อน:
+1.00 = ตัวอักษรชัดทุกตัว · 0.70 = พออ่านได้แต่บางคำไม่แน่ใจ · 0.30 = เดาเป็นส่วนใหญ่ · 0.00 = ไม่มีลายมือ
+
+ตอบเป็น JSON อย่างเดียว ห้ามมีข้อความอื่น ต้องมีครบทุกข้อที่ระบุไว้ข้างบน:
+{{"<เลขข้อ>": {{"text": "<ข้อความที่นักเรียนเขียน>", "confidence": <ตัวเลข 0-1>}}, ...}}"""
+
+
+class ClaudeCliOcrProvider:
+    """
+    อ่านลายมือด้วย Claude Code CLI ที่ครูติดตั้งไว้แล้ว ใช้สิทธิ์จาก subscription เดิม
+    จึงไม่ต้องมี anthropic_api_key และไม่ต้องเติมเครดิตแยก
+
+    ต่างจาก ClaudeVisionOcrProvider ตรงที่ส่งภาพคำตอบ "ทั้ง 12 ข้อรวมเป็นแผ่นเดียว"
+    ไปอ่านทีเดียว ไม่ได้ยิงทีละข้อ เพราะการเรียก CLI มีต้นทุนเวลาเริ่มต้นสูงกว่าการ
+    เรียก API มาก ยิง 12 ครั้งต่อคนจะช้าจนใช้งานจริงไม่ไหว (วัดจริง: รวมแผ่นเดียว
+    22-28 วินาทีต่อคน) ป้ายเลขข้อบนแผ่นภาพคือสิ่งที่ทำให้จับคำตอบกลับเข้าข้อได้ถูก
+    """
+
+    def __init__(
+        self,
+        order: list[str] | None = None,
+        model: str | None = None,
+        timeout: int = DEFAULT_TIMEOUT_SECONDS,
+    ):
+        require_claude_cli()   # ฟ้องตั้งแต่ตอนสร้าง ไม่ใช่ตอนอ่านกระดาษใบแรก
+        self.order = order
+        self.model = model
+        self.timeout = timeout
+
+    def extract_from_crops(self, crops: dict[str, np.ndarray]) -> dict[str, OcrResult]:
+        import shutil as _shutil
+        import tempfile
+        from pathlib import Path
+
+        from .align import imwrite_unicode
+        from .crop_sheet import build_crop_sheet
+
+        if not crops:
+            return {}
+        order = [qid for qid in (self.order or sorted(crops)) if qid in crops]
+
+        work_dir = tempfile.mkdtemp(prefix="อ่านลายมือ_")
+        try:
+            sheet_path = Path(work_dir) / "คำตอบ.png"
+            if not imwrite_unicode(str(sheet_path), build_crop_sheet(crops, order)):
+                raise RuntimeError("เขียนแผ่นภาพคำตอบชั่วคราวไม่สำเร็จ")
+            raw = run_claude_cli(
+                CLAUDE_CLI_PROMPT.format(
+                    image_path=str(sheet_path), question_ids=", ".join(order)
+                ),
+                model=self.model,
+                timeout=self.timeout,
+                allow_read=True,   # ต้องให้ CLI เปิดไฟล์ภาพที่เพิ่งเขียนไว้ได้
+            )
+        finally:
+            # แผ่นภาพมีลายมือนักเรียน ห้ามค้างอยู่ใน temp ไม่ว่าจะสำเร็จหรือไม่
+            _shutil.rmtree(work_dir, ignore_errors=True)
+
+        try:
+            data = json.loads(strip_code_fence(raw))
+        except (ValueError, TypeError) as exc:
+            # ทั้งแผ่นอ่านไม่ได้ = เรื่องใหญ่ ต้องให้ error ทะลุขึ้นไปให้ครูเห็น
+            # ห้ามคืนคำตอบว่าง 12 ข้อ เพราะจะกลายเป็นกระดาษ 0 คะแนนที่ดูเหมือนตรวจแล้ว
+            raise RuntimeError(f"claude CLI ตอบกลับมาไม่ใช่ JSON ที่อ่านได้: {raw.strip()[:200]}") from exc
+        if not isinstance(data, dict):
+            raise RuntimeError("claude CLI ตอบกลับมาเป็น JSON แต่ไม่ใช่ object")  # noqa: TRY004
+
+        out: dict[str, OcrResult] = {}
+        for qid in order:
+            item = data.get(qid)
+            if not isinstance(item, dict):
+                # ขาดไปบางข้อ = ให้ confidence 0 เพื่อให้ scorer พาเข้าคิวครูตรวจ
+                out[qid] = OcrResult(text="", confidence=0.0)
+                continue
+            try:
+                confidence = float(item.get("confidence", 0.0))
+            except (TypeError, ValueError):
+                confidence = 0.0
+            out[qid] = OcrResult(
+                text=str(item.get("text", "")).strip(),
+                confidence=max(0.0, min(1.0, confidence)),
+            )
+        return out
+
+    # อาร์กิวเมนต์ไม่ได้ใช้ แต่ต้องคงไว้ให้ตรง protocol OcrProvider
+    def extract(self, image_path: str, question_ids: list[str]) -> dict[str, OcrResult]:  # noqa: ARG002
+        """ให้ตรง protocol OcrProvider — ตัวนี้ต้องใช้ภาพที่ crop แล้วเท่านั้น"""
+        raise ValueError(
+            "ClaudeCliOcrProvider ต้องใช้ extract_from_crops() กับภาพที่ตัดต่อข้อแล้ว "
             "(ดู grading/regions.py) ไม่รับภาพเต็มหน้า"
         )
 

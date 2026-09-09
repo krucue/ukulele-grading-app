@@ -62,9 +62,9 @@ def build_arg_parser() -> argparse.ArgumentParser:
 
     parser.add_argument(
         "--ocr",
-        choices=["mock", "claude", "vision"],
+        choices=["mock", "claude", "claude-cli", "vision"],
         default="mock",
-        help="claude = อ่านลายมือด้วย Claude (ต้องมี ANTHROPIC_API_KEY) · vision = Google Cloud Vision · mock = คำตอบจำลองจากไฟล์",
+        help="claude = ผ่าน API key · claude-cli = ผ่านคำสั่ง claude ในเครื่อง (ใช้สิทธิ์ Claude Code ไม่ต้องมีคีย์) · vision = Google Cloud Vision · mock = คำตอบจำลองจากไฟล์",
     )
     parser.add_argument(
         "--mock-answers",
@@ -79,7 +79,12 @@ def build_arg_parser() -> argparse.ArgumentParser:
         "(สร้างโครงไฟล์ด้วย tools/make_crop_sheets.py) ระบบยังคิดคะแนนตามเกณฑ์ในเฉลยเหมือนเดิม",
     )
 
-    parser.add_argument("--llm", choices=["mock", "claude"], default="mock")
+    parser.add_argument(
+        "--llm",
+        choices=["mock", "claude", "claude-cli"],
+        default="mock",
+        help="ตัวตรวจข้อบรรยาย (ข้อ 4) — claude ใช้ API key · claude-cli ใช้คำสั่ง claude ในเครื่อง",
+    )
 
     parser.add_argument("--sheet", choices=["csv", "google"], default="csv")
     parser.add_argument("--sheet-path", default="results_dry_run.csv", help="ใช้เมื่อ --sheet csv")
@@ -240,6 +245,15 @@ def main() -> None:
                 f"anthropic_api_key ใน settings.json (หรือ ANTHROPIC_API_KEY) ถูกต้องหรือยัง: {exc}"
             )
             return
+    elif args.ocr == "claude-cli":
+        try:
+            from grading.ocr import ClaudeCliOcrProvider
+
+            ocr_provider = ClaudeCliOcrProvider(order=[q.question_id for q in config.questions])
+            ocr_results = ocr_provider.extract_from_crops(crops)
+        except Exception as exc:  # noqa: BLE001
+            fail(f"อ่านลายมือผ่านคำสั่ง claude ไม่สำเร็จ: {exc}")
+            return
     elif args.ocr == "vision":
         try:
             from grading.ocr import GoogleVisionOcrProvider
@@ -262,6 +276,29 @@ def main() -> None:
             image_path="(mock)", question_ids=list(crops.keys())
         )
 
+    # ---------- 3.5) ให้ Claude ตัดสินความใกล้เคียงทุกข้อในการเรียกครั้งเดียว ----------
+    # ข้อสอบชุดนี้แจกทั้งฉบับไทยและอังกฤษ การวัดความใกล้เคียงระดับตัวอักษรจึงให้ 0 กับ
+    # คำตอบที่ถูกต้องแต่คนละภาษากับเฉลย ขั้นนี้แก้ตรงนั้น ส่วนขั้นคะแนนกับการตั้งธง
+    # ยังเป็นของ pipeline ตามเกณฑ์ในไฟล์เฉลยเหมือนเดิม
+    if args.ocr in ("claude", "claude-cli") and not prefilled:
+        try:
+            from grading.llm_grader import (
+                ClaudeApiRunner,
+                ClaudeCliRunner,
+                grade_all_questions,
+            )
+
+            runner = ClaudeApiRunner() if args.ocr == "claude" else ClaudeCliRunner()
+            prefilled = grade_all_questions(
+                config, {qid: r.text for qid, r in ocr_results.items()}, runner
+            )
+        except Exception as exc:  # noqa: BLE001
+            print(
+                f"[คำเตือน] ให้ Claude ตัดสินความหมายทุกข้อไม่สำเร็จ ({exc}) — ถอยไปวัดความใกล้เคียง "
+                "แบบเทียบตัวอักษรแทน ข้อที่เด็กตอบคนละภาษากับเฉลยจะได้คะแนนต่ำผิดปกติ",
+                file=sys.stderr,
+            )
+
     # ---------- 4) เตรียม LLM grader (ถ้าเฉลยมีข้อที่ต้องใช้) ----------
     needs_llm = any(
         q.scoring_method == "llm_semantic" and q.question_id not in prefilled
@@ -269,16 +306,18 @@ def main() -> None:
     )
     llm_grader = None
     if needs_llm:
-        if args.llm == "claude":
+        if args.llm in ("claude", "claude-cli"):
             try:
-                from grading.llm_grader import ClaudeSemanticGrader
+                if args.llm == "claude":
+                    from grading.llm_grader import ClaudeSemanticGrader
 
-                llm_grader = ClaudeSemanticGrader()
+                    llm_grader = ClaudeSemanticGrader()
+                else:
+                    from grading.llm_grader import ClaudeCliSemanticGrader
+
+                    llm_grader = ClaudeCliSemanticGrader()
             except Exception as exc:  # noqa: BLE001
-                fail(
-                    "ตั้งค่า Claude grader ไม่สำเร็จ — ตรวจสอบว่าติดตั้ง anthropic "
-                    f"และตั้งค่า ANTHROPIC_API_KEY ถูกต้องหรือยัง\nรายละเอียด: {exc}"
-                )
+                fail(f"ตั้งค่าตัวตรวจข้อบรรยายไม่สำเร็จ: {exc}")
                 return
         else:
             from grading.llm_grader import MockSemanticGrader

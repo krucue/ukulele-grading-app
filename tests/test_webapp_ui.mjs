@@ -84,8 +84,8 @@ const gradeJson = {
   total_score: 2,
   max_total: 15,
   needs_review: true,
-  mode: { ocr: "mock", llm: "mock", requested: "demo" },
-  warnings: ["โหมดลองใช้งาน: คำตอบมาจากไฟล์ตัวอย่าง ไม่ได้อ่านจากรูปจริง"],
+  mode: { ocr: "claude-cli", llm: "claude-cli", requested: "real" },
+  warnings: ["หน้า 1: หาขอบกระดาษไม่ชัด ใช้ภาพทั้งใบแทน"],
   results: [
     {
       question_id: "1.1",
@@ -133,10 +133,11 @@ const { window } = dom;
 const $ = (id) => window.document.getElementById(id);
 
 let saveCalls = 0;
+let gradeResponse = gradeJson;
 window.fetch = async (url) => {
   const u = String(url);
   if (u.includes("/api/status")) return { ok: true, json: async () => statusJson };
-  if (u.includes("/api/grade")) return { ok: true, json: async () => gradeJson };
+  if (u.includes("/api/grade")) return { ok: true, json: async () => gradeResponse };
   if (u.includes("/api/save")) {
     saveCalls++;
     return { ok: true, json: async () => saveJson };
@@ -182,7 +183,8 @@ check("ตารางผลโผล่ขึ้นมา", !$("results").hidde
 check("แสดงครบทุกข้อที่เซิร์ฟเวอร์ส่งมา", $("resultRows").querySelectorAll("tr").length === 2);
 check("ข้อที่ต้องตรวจสอบถูกไฮไลต์แถว", $("resultRows").querySelectorAll("tr.flagged").length === 1);
 check("แสดงเหตุผลที่ถูก flag ให้ครูเห็น", $("resultRows").textContent.includes("คำตอบไม่ตรงเฉลย"));
-check("แสดงคำเตือนของโหมดลองใช้งาน", $("warnings").textContent.includes("โหมดลองใช้งาน"));
+check("แสดงคำเตือนที่เซิร์ฟเวอร์ส่งมาให้ครูเห็น", $("warnings").textContent.includes("หาขอบกระดาษไม่ชัด"));
+check("โหมดตรวจจริงไม่ขึ้นแถบเตือนของโหมดลองใช้งาน", $("demoBanner").hidden);
 check("คะแนนรวมคิดจากช่องกรอก ไม่ใช่ค่าที่เซิร์ฟเวอร์ส่งมาดิบ ๆ", $("scoreNow").textContent === "2");
 check("ปุ่มบันทึกพร้อมใช้", !$("saveBtn").hidden);
 check("ปุ่มคนต่อไปยังไม่โผล่ก่อนบันทึก", $("nextBtn").hidden);
@@ -275,6 +277,32 @@ check(
   $("dropPdf").querySelector(".drop-note").textContent === "ยังไม่ได้เลือกไฟล์" &&
     !$("dropPdf").classList.contains("filled")
 );
+
+// ---------- โหมดลองใช้งาน: ห้ามเผลอเอาคะแนนไปใช้ ----------
+// เคยเกิดขึ้นจริง — ครูกดตรวจในโหมดลองใช้งานแล้วเห็นคำตอบตัวอย่างจากไฟล์ demo
+// (เช่นข้อ 2.3 เป็น "4 สาย" ทุกใบไม่ว่าใครทำ) แล้วนึกว่าเป็นผลจากกระดาษที่อัปโหลด
+console.log("");
+console.log("โหมดลองใช้งานต้องกันไม่ให้บันทึกลงไฟล์คะแนนจริง");
+
+const demoJson = JSON.parse(JSON.stringify(gradeJson));
+demoJson.mode = { ocr: "mock", llm: "mock", requested: "demo" };
+gradeResponse = demoJson;
+$("studentName").value = "ด.ช. ทดสอบ ใจดี";
+$("gradeForm").dispatchEvent(new window.Event("submit", { bubbles: true, cancelable: true }));
+await tick();
+
+check("โหมดลองใช้งานขึ้นแถบเตือนตัวใหญ่", !$("demoBanner").hidden);
+check(
+  "แถบเตือนบอกตรง ๆ ว่าไม่ได้อ่านจากกระดาษที่อัปโหลด",
+  $("demoBanner").textContent.includes("ไม่ได้อ่านจากกระดาษที่อัปโหลด")
+);
+check("ซ่อนปุ่มบันทึกในโหมดลองใช้งาน", $("saveBtn").hidden);
+
+const savesBefore = saveCalls;
+click("saveBtn");
+await tick();
+check("ถึงจะสั่งกดปุ่มบันทึกตรง ๆ ก็ไม่ยิงไปที่ /api/save", saveCalls === savesBefore);
+
 
 console.log(`\nผ่าน ${passed} ตก ${failed}`);
 process.exit(failed ? 1 : 0);

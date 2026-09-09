@@ -20,6 +20,8 @@ import os
 from dataclasses import dataclass, field
 from pathlib import Path
 
+from .claude_cli import claude_cli_path
+
 # โมเดลที่ใช้ทั้งอ่านลายมือ (ClaudeVisionOcrProvider) และตรวจข้อบรรยาย (ClaudeSemanticGrader)
 # ทั้งสองคลาสอ่านค่าเริ่มต้นจากตรงนี้ที่เดียว จะได้ไม่หลุดกันเองเวลาเปลี่ยนรุ่น
 DEFAULT_CLAUDE_MODEL = "claude-opus-5"
@@ -33,6 +35,8 @@ class AppSettings:
 
     anthropic_api_key: str = ""
     claude_model: str = DEFAULT_CLAUDE_MODEL
+    # "auto" = มีคีย์ใช้คีย์ ไม่มีก็ใช้ claude CLI ในเครื่อง · บังคับได้ด้วย "api" หรือ "cli"
+    ocr_provider: str = "auto"
     google_credentials_path: str = ""
 
     sheet_mode: str = "csv"                    # "csv" | "google"
@@ -47,18 +51,39 @@ class AppSettings:
     problems: list[str] = field(default_factory=list)
 
     @property
-    def llm_ready(self) -> bool:
-        """ตรวจข้อบรรยาย (ข้อ 4) ด้วย Claude ตัวจริงได้หรือยัง"""
+    def api_key_ready(self) -> bool:
         return bool(self.anthropic_api_key)
 
     @property
-    def ocr_ready(self) -> bool:
-        """อ่านลายมือจากภาพด้วย Claude ตัวจริงได้หรือยัง
+    def cli_ready(self) -> bool:
+        """เครื่องนี้มี Claude Code CLI ให้เรียกใช้สิทธิ์จาก subscription ไหม"""
+        return claude_cli_path() is not None
 
-        ใช้คีย์ใบเดียวกับ llm_ready โดยตั้งใจ — ทั้งอ่านลายมือและตรวจข้อบรรยาย
-        เดินผ่าน Anthropic API ทางเดียวกัน ครูจึงตั้งค่าที่เดียวจบ
+    @property
+    def claude_route(self) -> str | None:
+        """จะคุยกับ Claude ทางไหน — "api" (คีย์) / "cli" (คำสั่ง claude) / None (ยังไม่ได้เลย)
+
+        ทั้งการอ่านลายมือและการตรวจข้อบรรยายเดินทางเดียวกันเสมอโดยตั้งใจ ไม่ปล่อยให้
+        อ่านลายมือด้วยของจริงแต่ตรวจข้อบรรยายด้วยของจำลอง เพราะคะแนนที่ออกมาจะดูปกติ
+        ทุกอย่างจนไม่มีใครจับได้
         """
-        return bool(self.anthropic_api_key)
+        if self.ocr_provider == "api":
+            return "api" if self.api_key_ready else None
+        if self.ocr_provider == "cli":
+            return "cli" if self.cli_ready else None
+        if self.api_key_ready:
+            return "api"
+        return "cli" if self.cli_ready else None
+
+    @property
+    def llm_ready(self) -> bool:
+        """ตรวจข้อบรรยาย (ข้อ 4) ด้วย Claude ตัวจริงได้หรือยัง"""
+        return self.claude_route is not None
+
+    @property
+    def ocr_ready(self) -> bool:
+        """อ่านลายมือจากภาพด้วย Claude ตัวจริงได้หรือยัง"""
+        return self.claude_route is not None
 
     @property
     def google_ready(self) -> bool:
@@ -91,15 +116,22 @@ class AppSettings:
     def status_lines(self) -> list[str]:
         """ข้อความสรุปสถานะให้ครูอ่านรู้เรื่องว่าตอนนี้พร้อมแค่ไหน"""
         lines = []
+        route = self.claude_route
+        if route == "api":
+            how = f"ผ่าน API key ({self.claude_model})"
+        elif route == "cli":
+            how = "ผ่านคำสั่ง claude ในเครื่อง (ใช้สิทธิ์ Claude Code ที่ล็อกอินไว้)"
+        else:
+            how = None
         lines.append(
-            f"อ่านลายมือ (OCR): Claude ตัวจริง ({self.claude_model})"
-            if self.ocr_ready
-            else "อ่านลายมือ (OCR): โหมดจำลอง — ยังไม่ได้ตั้ง anthropic_api_key"
+            f"อ่านลายมือ (OCR): Claude ตัวจริง {how}"
+            if how
+            else "อ่านลายมือ (OCR): โหมดจำลอง — ยังไม่มีทั้ง anthropic_api_key และคำสั่ง claude"
         )
         lines.append(
-            f"ตรวจข้อบรรยาย: Claude ตัวจริง ({self.claude_model})"
-            if self.llm_ready
-            else "ตรวจข้อบรรยาย: โหมดจำลอง — ยังไม่ได้ตั้ง anthropic_api_key"
+            f"ตรวจข้อบรรยาย: Claude ตัวจริง {how}"
+            if how
+            else "ตรวจข้อบรรยาย: โหมดจำลอง — ยังไม่มีทั้ง anthropic_api_key และคำสั่ง claude"
         )
         lines.append(
             f"บันทึกผล: Google Sheets ({self.spreadsheet_id})"
@@ -144,6 +176,12 @@ def load_settings(path: str | Path | None = None) -> AppSettings:
         data.get("anthropic_api_key") or os.environ.get("ANTHROPIC_API_KEY", "")
     ).strip()
     settings.claude_model = str(data.get("claude_model") or DEFAULT_CLAUDE_MODEL).strip()
+    settings.ocr_provider = str(data.get("ocr_provider") or "auto").strip()
+    if settings.ocr_provider not in ("auto", "api", "cli"):
+        settings.problems.append(
+            f'ocr_provider ต้องเป็น "auto" / "api" / "cli" เท่านั้น (ได้ "{settings.ocr_provider}") — ใช้ auto แทน'
+        )
+        settings.ocr_provider = "auto"
     settings.google_credentials_path = str(
         data.get("google_credentials_path")
         or os.environ.get("GOOGLE_APPLICATION_CREDENTIALS", "")

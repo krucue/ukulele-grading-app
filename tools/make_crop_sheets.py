@@ -27,13 +27,12 @@ import tempfile
 
 sys.path.insert(0, os.path.join(os.path.dirname(__file__), ".."))
 
-import cv2
 import numpy as np
-from PIL import Image, ImageDraw
 
 from grading.align import imread_unicode
 from grading.config_loader import load_config
 from grading.console import enable_utf8_output
+from grading.crop_sheet import save_crop_sheet
 from grading.pdf_pages import PdfExtractError, extract_scanned_pages
 from grading.regions import crop_question, load_region_template
 from grading.register import prepare_page
@@ -44,10 +43,6 @@ enable_utf8_output()
 PROJECT_ROOT = os.path.join(os.path.dirname(__file__), "..")
 REGIONS_PATH = os.path.join(PROJECT_ROOT, "config", "regions.json")
 ANSWER_KEY_PATH = os.path.join(PROJECT_ROOT, "config", "answer_key_config.json")
-
-LABEL_WIDTH = 110
-SHEET_MAX_WIDTH = 1500
-
 
 def crops_for_pdf(pdf_path: str, template, work_dir: str) -> tuple[dict[str, np.ndarray], list[str]]:
     """เดินทางเดียวกับตอนตรวจจริง: แตกหน้า -> จับคู่ใบอ้างอิง -> ตัดภาพต่อข้อ"""
@@ -66,34 +61,6 @@ def crops_for_pdf(pdf_path: str, template, work_dir: str) -> tuple[dict[str, np.
         for qid in template.question_ids_on_page(page.page_number):
             crops[qid] = crop_question(prepared.image, template, qid)
     return crops, problems
-
-
-def build_sheet(crops: dict[str, np.ndarray], order: list[str], out_path: str) -> None:
-    """ต่อภาพคำตอบทุกข้อเป็นแผ่นเดียว มีป้ายเลขข้อกำกับซ้ายมือ"""
-    items = [(qid, crops[qid]) for qid in order if qid in crops]
-    if not items:
-        raise ValueError("ไม่มีภาพคำตอบให้ทำแผ่นภาพเลย")
-
-    scale = min(1.0, (SHEET_MAX_WIDTH - LABEL_WIDTH) / max(c.shape[1] for _, c in items))
-    images = []
-    for qid, crop in items:
-        if scale < 1.0:
-            crop = cv2.resize(crop, (round(crop.shape[1] * scale), round(crop.shape[0] * scale)))
-        images.append((qid, Image.fromarray(cv2.cvtColor(crop, cv2.COLOR_BGR2RGB))))
-
-    width = LABEL_WIDTH + max(im.width for _, im in images) + 10
-    height = sum(im.height + 14 for _, im in images) + 14
-    sheet = Image.new("RGB", (width, height), (255, 255, 255))
-    draw = ImageDraw.Draw(sheet)
-    y = 7
-    for qid, im in images:
-        draw.text((10, y + im.height // 2 - 6), f"ข้อ {qid}", fill=(190, 0, 0))
-        sheet.paste(im, (LABEL_WIDTH, y))
-        draw.rectangle(
-            [LABEL_WIDTH, y, LABEL_WIDTH + im.width, y + im.height], outline=(120, 120, 120)
-        )
-        y += im.height + 14
-    sheet.save(out_path)
 
 
 def answer_template(config, crops: dict[str, np.ndarray]) -> dict:
@@ -154,7 +121,7 @@ def main() -> None:
                 continue
 
             sheet_path = os.path.join(out_dir, f"{name}.png")
-            build_sheet(crops, order, sheet_path)
+            save_crop_sheet(crops, order, sheet_path)
             print(f"  แผ่นภาพคำตอบ: {sheet_path}")
 
             # ห้ามเขียนทับไฟล์คำตอบที่กรอกไว้แล้วเด็ดขาด — รันเครื่องมือนี้ซ้ำเป็นเรื่องปกติ

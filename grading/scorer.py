@@ -14,7 +14,7 @@ from __future__ import annotations
 from dataclasses import dataclass, field
 
 from .config_loader import GradingSettings, Question, ScoreTier
-from .similarity import best_match_percent
+from .similarity import best_match_percent, keyword_match_percent
 
 
 @dataclass
@@ -81,6 +81,8 @@ def score_question(
                 "แต่ไม่ได้ส่ง llm_grader เข้ามาใน score_question()"
             )
         similarity, reasoning = llm_grader.grade(question, student_answer)
+    elif question.scoring_method == "keyword_match":
+        similarity = keyword_match_percent(student_answer, question.acceptable_answers)
     else:
         # ครอบคลุมทั้ง string_similarity และ exact_match
         # (exact_match ก็คือ string_similarity ที่ config ตั้ง tier ไว้แค่ 100/0)

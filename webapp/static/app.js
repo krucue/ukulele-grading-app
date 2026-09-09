@@ -71,7 +71,8 @@ async function loadStatus() {
     realInput.disabled = true;
     $("realMode").classList.add("disabled");
     $("realModeNote").textContent =
-      "ยังใช้ไม่ได้ — ต้องตั้ง anthropic_api_key ใน settings.json ก่อน (ใช้อ่านลายมือจากรูปและตรวจข้อบรรยาย)";
+      "ยังใช้ไม่ได้ — ต้องมีอย่างใดอย่างหนึ่ง: ติดตั้ง Claude Code แล้วล็อกอิน (คำสั่ง claude) " +
+      "หรือตั้ง anthropic_api_key ใน settings.json";
   }
 }
 
@@ -163,6 +164,7 @@ function resetForNextStudent() {
   $("results").hidden = true;
   $("resultRows").innerHTML = "";
   $("warnings").innerHTML = "";
+  $("demoBanner").hidden = true;
   hide($("formError"));
   hide($("saveOk"));
   hide($("saveWarn"));
@@ -263,6 +265,12 @@ function renderResults(data) {
   $("resultStudent").textContent = who || "(ยังไม่ได้กรอกชื่อนักเรียน)";
   $("scoreMax").textContent = `/ ${data.max_total}`;
 
+  // โหมดลองใช้งาน = คำตอบมาจากไฟล์ตัวอย่าง ไม่ได้อ่านกระดาษที่อัปโหลดเลย
+  // ต้องกันไม่ให้บันทึกลงไฟล์คะแนนจริง และต้องบอกให้เห็นชัดกว่าคำเตือนบรรทัดเดียว
+  const fromSample = !data.mode || data.mode.ocr === "mock";
+  $("demoBanner").hidden = !fromSample;
+  if (fromSample) $("saveBtn").hidden = true;
+
   const warnBox = $("warnings");
   warnBox.innerHTML = "";
   (data.warnings || []).forEach((w) => {
@@ -353,6 +361,10 @@ function renderResults(data) {
 
 $("saveBtn").addEventListener("click", async () => {
   if (!lastGrading || savedOnce) return;
+  if (!lastGrading.mode || lastGrading.mode.ocr === "mock") {
+    show($("saveError"), "ผลชุดนี้มาจากโหมดลองใช้งาน บันทึกลงไฟล์คะแนนไม่ได้");
+    return;
+  }
   hide($("saveOk"));
   hide($("saveWarn"));
   hide($("saveError"));

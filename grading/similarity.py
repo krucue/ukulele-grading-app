@@ -66,3 +66,29 @@ def best_match_percent(student_answer: str, acceptable_answers: list[str]) -> fl
     if not acceptable_answers:
         return 0.0
     return max(similarity_percent(student_answer, ans) for ans in acceptable_answers)
+
+def contains_all_tokens(student_answer: str, reference_answer: str) -> bool:
+    """คำตอบนักเรียนมีคำสำคัญของเฉลยครบทุกคำไหม (นับเป็นคำ ไม่ใช่ตัวอักษรที่บังเอิญซ้ำ)"""
+    reference_tokens = normalize_text(reference_answer).split()
+    if not reference_tokens:
+        return False
+    student_tokens = set(normalize_text(student_answer).split())
+    return all(token in student_tokens for token in reference_tokens)
+
+
+def keyword_match_percent(student_answer: str, acceptable_answers: list[str]) -> float:
+    """100 ถ้าเจอคำสำคัญของเฉลยแบบใดแบบหนึ่งครบ ไม่เจอก็ถอยไปวัดความใกล้เคียงตามปกติ
+
+    มีไว้สำหรับคำตอบสั้นที่เด็กชอบเขียนเป็นประโยค เช่นเฉลย "สาย G" แต่เด็กเขียนว่า
+    "for playing string G" ซึ่งถูกต้อง แต่ถ้าวัดด้วยความใกล้เคียงระดับตัวอักษรจะได้แค่
+    ~40% เพราะความยาวต่างกันมาก และถ้าใช้ exact_match ก็ได้ 0 ทันที ทั้งที่ตอบถูก
+    (ข้อสอบชุดนี้แจกทั้งฉบับไทยและอังกฤษ คำตอบจึงยาวสั้นไม่เท่ากันเป็นเรื่องปกติ)
+
+    ยังคงแยกคำตอบผิดออกได้ เพราะเทียบเป็น "คำ" ไม่ใช่ตัวอักษร — "string C" ไม่มีคำว่า
+    g จึงไม่เข้าเงื่อนไขของเฉลย "สาย G" ซึ่งเป็นจุดที่ string_similarity แบบตัวอักษรพลาด
+    """
+    if not acceptable_answers:
+        return 0.0
+    if any(contains_all_tokens(student_answer, ans) for ans in acceptable_answers):
+        return 100.0
+    return best_match_percent(student_answer, acceptable_answers)

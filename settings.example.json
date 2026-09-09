@@ -1,8 +1,13 @@
 {
   "_อ่านก่อน": "คัดลอกไฟล์นี้เป็น settings.json แล้วเติมค่าของจริง — settings.json ถูก .gitignore ไว้ ไม่หลุดขึ้น GitHub",
 
-  "_anthropic_api_key": "คีย์เดียวที่ต้องมีเพื่อตรวจจริง — ใช้ทั้งอ่านลายมือจากรูปและตรวจข้อบรรยาย (ข้อ 4) เอาจาก console.anthropic.com > API keys",
+  "_อ่านก่อน_ตรวจจริง": "ถ้าเครื่องนี้ติดตั้ง Claude Code ไว้แล้ว (มีคำสั่ง claude) ไม่ต้องใส่คีย์ก็ตรวจจริงได้เลย โปรแกรมจะใช้สิทธิ์จาก subscription ที่ล็อกอินไว้",
+
+  "_anthropic_api_key": "ใส่เมื่ออยากให้เร็วขึ้น หรือจะเอาไปรันบนเครื่องที่ไม่มี Claude Code — มีคีย์แล้วโปรแกรมจะเลือกใช้คีย์ก่อนเสมอ เอาจาก console.anthropic.com > API keys",
   "anthropic_api_key": "",
+
+  "_ocr_provider": "auto = มีคีย์ใช้คีย์ ไม่มีก็ใช้คำสั่ง claude ในเครื่อง · บังคับทางได้ด้วย api หรือ cli",
+  "ocr_provider": "auto",
 
   "_claude_model": "โมเดลที่ใช้ ค่าเริ่มต้น claude-opus-5 (อ่านลายมือแม่นสุด) · ถ้าอยากประหยัดใช้ claude-sonnet-5 ได้",
   "claude_model": "claude-opus-5",

@@ -157,3 +157,23 @@ input.score-input.edited { border-color: var(--ochre); background: #FFFBF4; }
   .score-table .qlabel, .answer { max-width: none; }
   .topbar-inner { flex-direction: column; align-items: flex-start; }
 }
+
+/* แถบเตือนโหมดลองใช้งาน — ต้องสะดุดตากว่า warn-box ปกติ เพราะเป็นจุดที่ครูเข้าใจผิด
+   แล้วเอาคะแนนที่ไม่ได้มาจากกระดาษจริงไปกรอกต่อได้ (เคยเกิดขึ้นมาแล้ว) */
+.demo-banner {
+  display: block;
+  margin: 14px 0;
+  padding: 14px 16px;
+  border: 2px solid #B8722A;
+  border-left-width: 8px;
+  border-radius: 8px;
+  background: #FDF3E7;
+  color: #6B3F12;
+  line-height: 1.6;
+}
+
+.demo-banner strong {
+  display: block;
+  margin-bottom: 4px;
+  font-size: 1.05em;
+}

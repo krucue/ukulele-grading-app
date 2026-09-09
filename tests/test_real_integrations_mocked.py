@@ -292,6 +292,139 @@ del sys.modules["google.oauth2.service_account"]
 del sys.modules["googleapiclient.discovery"]
 
 
+# ============================================================
+# 4) ทาง claude CLI — ปลอม subprocess.run ทั้งตัว
+# ============================================================
+print("\nclaude CLI (ปลอม subprocess)")
+
+import types as _types  # noqa: E402
+
+import grading.claude_cli as claude_cli  # noqa: E402
+
+_cli_calls = []
+
+
+class _FakeCompleted:
+    def __init__(self, stdout="", stderr="", returncode=0):
+        self.stdout = stdout
+        self.stderr = stderr
+        self.returncode = returncode
+
+
+def _fake_run(command, **kwargs):
+    _cli_calls.append({"command": list(command), **kwargs})
+    return _FakeCompleted(stdout=_fake_run.canned)
+
+
+_fake_run.canned = "ok"
+claude_cli.subprocess = _types.SimpleNamespace(
+    run=_fake_run, TimeoutExpired=RuntimeError
+)
+claude_cli.shutil = _types.SimpleNamespace(which=lambda _name: "C:/ปลอม/claude.exe")
+
+out = claude_cli.run_claude_cli("สวัสดี", allow_read=True)
+sent = _cli_calls[-1]
+check("คืนข้อความที่ CLI พิมพ์ออกมา", out == "ok")
+check(
+    "ส่ง prompt ทาง stdin ไม่ใช่อาร์กิวเมนต์ต่อท้าย",
+    sent.get("input") == "สวัสดี" and "สวัสดี" not in sent["command"],
+)
+check("ยิงด้วยโหมด -p (print)", "-p" in sent["command"])
+check("เปิดสิทธิ์ Read ให้เปิดไฟล์ภาพได้ตอน allow_read", "--allowed-tools" in sent["command"])
+
+_cli_calls.clear()
+claude_cli.run_claude_cli("ไม่ต้องอ่านไฟล์")
+check("ไม่ขอสิทธิ์ Read ถ้าไม่ได้อ้างถึงไฟล์", "--allowed-tools" not in _cli_calls[-1]["command"])
+
+_fake_run.canned = ""
+
+
+def _fail_run(command, **kwargs):
+    return _FakeCompleted(stderr="not logged in", returncode=1)
+
+
+claude_cli.subprocess.run = _fail_run
+try:
+    claude_cli.run_claude_cli("x")
+    check("CLI ล้มเหลวต้องโยน error ไม่ใช่คืนค่าว่าง", False)
+except claude_cli.ClaudeCliError as exc:
+    check("CLI ล้มเหลวต้องโยน error พร้อมรายละเอียด", "not logged in" in str(exc))
+
+claude_cli.subprocess.run = _fake_run
+claude_cli.shutil = _types.SimpleNamespace(which=lambda _name: None)
+try:
+    claude_cli.run_claude_cli("x")
+    check("ไม่มีคำสั่ง claude ต้องบอกให้ครูรู้", False)
+except claude_cli.ClaudeCliError as exc:
+    check("ไม่มีคำสั่ง claude ต้องบอกให้ครูรู้", "claude" in str(exc))
+claude_cli.shutil = _types.SimpleNamespace(which=lambda _name: "C:/ปลอม/claude.exe")
+
+
+print("\nClaudeCliOcrProvider (ปลอม subprocess)")
+
+from grading.ocr import ClaudeCliOcrProvider  # noqa: E402
+
+_ORDER = ["1.1", "1.2", "5.4"]
+_fake_run.canned = (
+    '{"1.1": {"text": "นัต", "confidence": 0.9}, '
+    '"1.2": {"text": "ดีดสายเปล่า", "confidence": 1.4}}'
+)
+_cli_calls.clear()
+crop = np.full((40, 300, 3), 255, np.uint8)
+results = ClaudeCliOcrProvider(order=_ORDER).extract_from_crops(dict.fromkeys(_ORDER, crop))
+
+check("อ่านครบทุกข้อที่ส่งไป (ข้อที่ CLI ไม่ตอบก็ต้องมีช่องไว้)", sorted(results) == sorted(_ORDER))
+check("แปลงข้อความที่อ่านได้ถูกต้อง", results["1.1"].text == "นัต")
+check("confidence เกิน 1 ถูกหั่นเหลือ 1.0", results["1.2"].confidence == 1.0)
+check(
+    "ข้อที่ CLI ไม่ได้ตอบ -> ข้อความว่าง confidence 0 (เข้าคิวให้ครูตรวจ)",
+    results["5.4"].text == "" and results["5.4"].confidence == 0.0,
+)
+check("ยิง CLI ครั้งเดียวต่อนักเรียน 1 คน", len(_cli_calls) == 1)
+check("บอกเลขข้อที่ต้องอ่านไปใน prompt ด้วย", "5.4" in _cli_calls[-1]["input"])
+check("สั่งห้ามเอารอยปากกาแดงของครูมาเป็นคำตอบ", "สีแดง" in _cli_calls[-1]["input"])
+
+_fake_run.canned = "ขอโทษครับ อ่านไม่ออก"
+try:
+    ClaudeCliOcrProvider(order=_ORDER).extract_from_crops(dict.fromkeys(_ORDER, crop))
+    check("ตอบไม่เป็น JSON ต้องโยน error ไม่ใช่คืนคำตอบว่างทั้งใบ", False)
+except RuntimeError:
+    check("ตอบไม่เป็น JSON ต้องโยน error ไม่ใช่คืนคำตอบว่างทั้งใบ", True)
+
+
+print("\ngrade_all_questions (ตัดสินทุกข้อในการเรียกครั้งเดียว)")
+
+import json as _json  # noqa: E402
+
+from grading.config_loader import load_config as _load_config  # noqa: E402
+from grading.llm_grader import ClaudeCliRunner, grade_all_questions  # noqa: E402
+
+_config = _load_config(
+    os.path.join(os.path.dirname(__file__), "..", "config", "answer_key_config.json")
+)
+_fake_run.canned = _json.dumps(
+    {
+        "1.1": {"percent": 100, "reasoning": "ตรงเฉลย"},
+        "1.2": {"percent": 150, "reasoning": "เกินร้อย"},
+        "4": {"percent": 55, "reasoning": "ได้ครึ่งเดียว"},
+    },
+    ensure_ascii=False,
+)
+_cli_calls.clear()
+graded = grade_all_questions(
+    _config, {"1.1": "Is called nut.", "4": "strumming is all strings"}, ClaudeCliRunner()
+)
+prompt_sent = _cli_calls[-1]["input"]
+check("ยิงครั้งเดียวได้คะแนนหลายข้อ", graded["1.1"][0] == 100.0 and graded["4"][0] == 55.0)
+check("เกิน 100 ถูกหั่นลง", graded["1.2"][0] == 100.0)
+check("เก็บเหตุผลไว้ให้ครูอ่าน", graded["4"][1] == "ได้ครึ่งเดียว")
+check("ข้อที่ CLI ไม่ได้ตอบ ไม่ถูกใส่คะแนนมั่ว", "5.1" not in graded)
+check("แนบคำตอบนักเรียนไปใน prompt", "Is called nut." in prompt_sent)
+check("แนบเฉลยไปใน prompt", "นัต" in prompt_sent)
+check("สั่งห้ามหักคะแนนเพราะตอบคนละภาษากับเฉลย", "คนละภาษา" in prompt_sent)
+
+
+
 print(f"\n{'='*40}\nรวม: ผ่าน {passed} / ล้มเหลว {failed}\n{'='*40}")
 if failed:
     sys.exit(1)

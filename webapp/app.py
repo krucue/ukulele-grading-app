@@ -148,18 +148,23 @@ def _mock_ocr_results(config: ExamConfig) -> dict[str, OcrResult]:
 def _build_llm_grader(settings: AppSettings, want_real: bool) -> tuple[object, str, list[str]]:
     """คืน (grader, ชื่อโหมด, คำเตือน) — ถอยไปใช้ mock อัตโนมัติถ้ายังไม่ได้ตั้งคีย์"""
     warnings: list[str] = []
-    if want_real and settings.llm_ready:
+    route = settings.claude_route
+    if want_real and route is not None:
         try:
-            from grading.llm_grader import ClaudeSemanticGrader
+            if route == "api":
+                from grading.llm_grader import ClaudeSemanticGrader
 
-            return ClaudeSemanticGrader(model=settings.claude_model), "claude", warnings
+                return ClaudeSemanticGrader(model=settings.claude_model), "claude", warnings
+            from grading.llm_grader import ClaudeCliSemanticGrader
+
+            return ClaudeCliSemanticGrader(), "claude-cli", warnings
         # จับกว้าง ๆ ตั้งใจ — คีย์ผิด/เน็ตหลุด/ไลบรารีไม่ครบ ไม่ควรทำให้ตรวจทั้งชุดล่ม
         # ถอยไปใช้ mock แล้วเตือนครูดีกว่า แต่ต้องเตือนให้เห็นชัดว่าถอยแล้ว
         except Exception as exc:  # noqa: BLE001
             warnings.append(f"ต่อ Claude ไม่สำเร็จ ใช้โหมดจำลองแทนสำหรับข้อบรรยาย — {exc}")
     elif want_real:
         warnings.append(
-            "ยังไม่ได้ตั้ง anthropic_api_key ใน settings.json — ข้อบรรยายใช้โหมดจำลองไปก่อน "
+            "ยังไม่มีทั้ง anthropic_api_key และคำสั่ง claude ในเครื่อง — ข้อบรรยายใช้โหมดจำลองไปก่อน "
             "ห้ามใช้คะแนนข้อบรรยายนี้ตัดสินจริง"
         )
     return MockSemanticGrader(), "mock", warnings
@@ -313,8 +318,9 @@ def create_app(settings: AppSettings | None = None) -> Flask:
                 # เช็คคีย์ก่อนลงมือดัด/ตัดภาพ — ถูกกว่า และตรงสาเหตุกว่าการไปบอกครู
                 # ให้สแกนกระดาษใหม่ทั้งที่ปัญหาจริงคือยังไม่ได้ตั้งค่า
                 raise GradingError(
-                    "โหมดตรวจจริงต้องตั้ง anthropic_api_key ใน settings.json ก่อน "
-                    "(ใช้อ่านลายมือจากรูป) — ระหว่างนี้เลือกโหมดลองใช้งานได้"
+                    "โหมดตรวจจริงต้องมีอย่างใดอย่างหนึ่ง: ตั้ง anthropic_api_key ใน settings.json "
+                    "หรือติดตั้ง Claude Code แล้วล็อกอินไว้ (คำสั่ง claude) "
+                    "— ระหว่างนี้เลือกโหมดลองใช้งานได้"
                 )
 
             crops = {}
@@ -331,17 +337,26 @@ def create_app(settings: AppSettings | None = None) -> Flask:
                     raise GradingError(
                         f"ไม่มีพิกัดตัดภาพสำหรับข้อ {joined} — ตรวจ config/regions.json"
                     )
+                route = settings_obj.claude_route
                 try:
-                    from grading.ocr import ClaudeVisionOcrProvider
+                    if route == "api":
+                        from grading.ocr import ClaudeVisionOcrProvider
 
-                    ocr_results = ClaudeVisionOcrProvider(
-                        model=settings_obj.claude_model
-                    ).extract_from_crops(crops)
-                # จับกว้าง ๆ ตั้งใจ — คีย์ผิด/เน็ตหลุด/ยังไม่ได้ pip install anthropic
+                        provider = ClaudeVisionOcrProvider(model=settings_obj.claude_model)
+                    else:
+                        from grading.ocr import ClaudeCliOcrProvider
+
+                        # ส่งลำดับข้อไปด้วย เพราะตัวนี้อ่านทั้ง 12 ข้อจากภาพแผ่นเดียว
+                        # ต้องรู้ว่าป้ายเลขข้อบนแผ่นเรียงอย่างไรจึงจับคำตอบกลับเข้าข้อได้ถูก
+                        provider = ClaudeCliOcrProvider(
+                            order=[q.question_id for q in config.questions]
+                        )
+                    ocr_results = provider.extract_from_crops(crops)
+                # จับกว้าง ๆ ตั้งใจ — คีย์ผิด/เน็ตหลุด/ยังไม่ได้ pip install anthropic/CLI ล็อกเอาต์
                 # ครูควรเห็นข้อความไทยที่บอกว่าต้องไปแก้อะไร ไม่ใช่ traceback ดิบ
                 except Exception as exc:
                     raise GradingError(f"อ่านลายมือด้วย Claude ไม่สำเร็จ: {exc}") from exc
-                ocr_mode = "claude"
+                ocr_mode = "claude" if route == "api" else "claude-cli"
             else:
                 ocr_results = _mock_ocr_results(config)
                 ocr_mode = "mock"
@@ -354,17 +369,61 @@ def create_app(settings: AppSettings | None = None) -> Flask:
             # ภาพกระดาษคำตอบมีชื่อและลายมือนักเรียน ห้ามค้างอยู่ใน temp
             shutil.rmtree(work_dir, ignore_errors=True)
 
-        llm_grader, llm_mode, llm_warnings = _build_llm_grader(
-            settings_obj, want_real=(mode == "real")
+        # ให้ Claude ตัดสินความใกล้เคียงของทุกข้อในการเรียกครั้งเดียว แล้วส่งเข้า pipeline
+        # เป็น prefilled percent — ขั้นคะแนนกับการตั้งธงยังเป็นของระบบตามเกณฑ์ในเฉลย
+        #
+        # ทำเพราะข้อสอบชุดนี้แจกทั้งฉบับไทยและอังกฤษ การวัดความใกล้เคียงระดับตัวอักษร
+        # ให้ 0 กับคำตอบที่ถูกต้องแต่คนละภาษากับเฉลย (วัดจริง: "Play openly, no pressing"
+        # ตรงเฉลย "ดีดสายเปล่า ไม่ต้องกด" เป๊ะ แต่ได้ความใกล้เคียง 3%)
+        prefilled: dict[str, tuple[float, str]] = {}
+        route = settings_obj.claude_route
+        if mode == "real" and route is not None:
+            try:
+                from grading.llm_grader import (
+                    ClaudeApiRunner,
+                    ClaudeCliRunner,
+                    grade_all_questions,
+                )
+
+                runner = (
+                    ClaudeApiRunner(model=settings_obj.claude_model)
+                    if route == "api"
+                    else ClaudeCliRunner()
+                )
+                prefilled = grade_all_questions(
+                    config, {qid: r.text for qid, r in ocr_results.items()}, runner
+                )
+            # จับกว้าง ๆ ตั้งใจ — ถ้าขั้นนี้ล้ม ยังตรวจต่อด้วยการวัดความใกล้เคียงแบบเดิมได้
+            # แต่ต้องเตือนให้ครูรู้ เพราะคะแนนที่ได้จะเข้มกว่าปกติมากถ้าเด็กตอบคนละภาษากับเฉลย
+            except Exception as exc:  # noqa: BLE001
+                warnings.append(
+                    f"ให้ Claude ตัดสินความหมายทุกข้อไม่สำเร็จ ({exc}) — ถอยไปวัดความใกล้เคียง "
+                    "แบบเทียบตัวอักษรแทน ข้อที่เด็กตอบคนละภาษากับเฉลยจะได้คะแนนต่ำผิดปกติ "
+                    "ต้องตรวจซ้ำทุกข้อก่อนบันทึก"
+                )
+
+        # ข้อบรรยายที่ขั้นข้างบนตัดสินให้แล้ว ไม่ต้องเรียกซ้ำอีกรอบ
+        needs_llm = any(
+            q.scoring_method == "llm_semantic" and q.question_id not in prefilled
+            for q in config.questions
         )
-        warnings.extend(llm_warnings)
+        if needs_llm:
+            llm_grader, llm_mode, llm_warnings = _build_llm_grader(
+                settings_obj, want_real=(mode == "real")
+            )
+            warnings.extend(llm_warnings)
+        else:
+            llm_grader = MockSemanticGrader()   # ไม่ถูกเรียกใช้ เพราะมี prefilled ครบแล้ว
+            llm_mode = ("claude" if route == "api" else "claude-cli") if prefilled else "mock"
 
         student_info = {
             "name": request.form.get("student_name", "").strip(),
             "no": request.form.get("student_no", "").strip(),
             "class": request.form.get("student_class", "").strip(),
         }
-        submission = grade_submission(student_info, ocr_results, config, llm_grader=llm_grader)
+        submission = grade_submission(
+            student_info, ocr_results, config, llm_grader=llm_grader, prefilled=prefilled
+        )
 
         return jsonify(
             {

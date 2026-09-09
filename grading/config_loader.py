@@ -25,7 +25,7 @@ class Question:
     question_id: str
     label: str
     type: str                 # "short_answer" | "numeric" | "descriptive" | ...
-    scoring_method: str        # "string_similarity" | "exact_match" | "llm_semantic"
+    scoring_method: str        # "string_similarity" | "exact_match" | "keyword_match" | "llm_semantic"
     max_score: float
     score_tiers: list[ScoreTier]
     acceptable_answers: list[str] = field(default_factory=list)
@@ -72,7 +72,7 @@ class ExamConfig:
                 )
             if q.scoring_method == "llm_semantic" and not q.reference_answer:
                 problems.append(f"ข้อ {q.question_id} ใช้ llm_semantic แต่ไม่มี reference_answer")
-            if q.scoring_method in ("string_similarity", "exact_match") and not q.acceptable_answers:
+            if q.scoring_method in ("string_similarity", "exact_match", "keyword_match") and not q.acceptable_answers:
                 problems.append(f"ข้อ {q.question_id} ใช้ {q.scoring_method} แต่ไม่มี acceptable_answers")
         return problems
 

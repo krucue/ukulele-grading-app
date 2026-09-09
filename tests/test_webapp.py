@@ -56,7 +56,16 @@ print("ตัวโหลด settings.json")
 default_settings = load_settings(path=PROJECT_ROOT / "ไม่มีไฟล์นี้จริง.json")
 check("ไม่มีไฟล์ settings.json ก็ยังรันได้", default_settings.loaded_from is None)
 check("ค่าเริ่มต้นคือโหมด csv", default_settings.sheet_mode == "csv")
-check("ค่าเริ่มต้นไม่พร้อมตรวจจริง", not default_settings.real_mode_ready)
+
+# ตรวจจริงได้ 2 ทาง: มี API key หรือมีคำสั่ง claude ในเครื่อง — เทสต้องไม่ขึ้นกับว่า
+# เครื่องที่รันเทสติดตั้ง Claude Code ไว้หรือไม่ จึงบังคับทางด้วย ocr_provider
+api_only = AppSettings(ocr_provider="api")
+check("บังคับทาง api แล้วไม่มีคีย์ -> ยังตรวจจริงไม่ได้", not api_only.real_mode_ready)
+check("บังคับทาง api แล้วมีคีย์ -> ตรวจจริงได้", AppSettings(ocr_provider="api", anthropic_api_key="sk-x").real_mode_ready)
+check(
+    "ทาง cli ขึ้นกับว่ามีคำสั่ง claude ในเครื่องไหม",
+    AppSettings(ocr_provider="cli").real_mode_ready == AppSettings().cli_ready,
+)
 check("โมเดลเริ่มต้นตรงกับ ClaudeSemanticGrader", default_settings.claude_model == DEFAULT_CLAUDE_MODEL)
 
 with tempfile.TemporaryDirectory() as tmpdir:
@@ -146,7 +155,9 @@ config = load_config(PROJECT_ROOT / "config" / "answer_key_config.json")
 
 with tempfile.TemporaryDirectory() as tmpdir:
     csv_path = Path(tmpdir) / "ผลตรวจ.csv"
-    settings = AppSettings(csv_path=str(csv_path))
+    # บังคับทาง api ไว้ เพื่อให้ผลเทสเหมือนกันทุกเครื่อง ไม่ว่าจะติดตั้ง Claude Code
+    # ไว้หรือไม่ (ถ้าปล่อย auto เครื่องที่มีคำสั่ง claude จะตรวจจริงได้ตั้งแต่ยังไม่ตั้งคีย์)
+    settings = AppSettings(csv_path=str(csv_path), ocr_provider="api")
     app = create_app(settings)
     client = app.test_client()
 
