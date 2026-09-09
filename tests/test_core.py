@@ -109,6 +109,43 @@ check(
 )
 
 
+print()
+print("คะแนนความใกล้เคียงที่ตัดสินมาจากข้างนอก (ใช้ตอนยังไม่มี API key)")
+# ครูที่ยังไม่มีคีย์จะให้คนอื่นอ่านลายมือและตัดสินความหมายมาให้ แล้วส่งเป็นตัวเลขเข้ามา
+# ตรงนี้ต้องพิสูจน์ว่าขั้นที่เหลือยังเป็นของระบบเหมือนเดิม คือขั้นคะแนนกับการตั้งธง
+# ไม่ใช่เอาคะแนนที่ส่งมาไปใช้ตรง ๆ ไม่งั้นเกณฑ์ในไฟล์เฉลยจะถูกข้ามไปโดยไม่มีใครรู้
+prefilled_full = score_question(question, "อะไรก็ได้", 0.95, settings, prefilled_percent=100)
+check("ส่ง 100% เข้ามา -> ได้คะแนนเต็มตามขั้นในเฉลย", prefilled_full.score == 1.0)
+
+prefilled_zero = score_question(question, "อะไรก็ได้", 0.95, settings, prefilled_percent=20)
+check(
+    "ส่ง 20% เข้ามา -> ตกขั้นล่างสุด และถูกตั้งธงให้ครูตรวจตามเฉลย",
+    prefilled_zero.score == 0.0 and prefilled_zero.flagged,
+)
+
+# ข้อความจริงถูกเมินโดยตั้งใจเมื่อมี prefilled — คนข้างนอกอ่านและตัดสินมาแล้ว
+prefilled_ignores_text = score_question(question, "สาย G", 0.95, settings, prefilled_percent=0)
+check(
+    "มี prefilled แล้วไม่ต้องไปคำนวณความใกล้เคียงเองซ้ำ",
+    prefilled_ignores_text.similarity_percent == 0.0,
+)
+
+prefilled_clamped = score_question(question, "x", 0.95, settings, prefilled_percent=150)
+check("ค่าเกิน 100 ถูกหั่นลงเหลือ 100", prefilled_clamped.similarity_percent == 100.0)
+
+# OCR confidence ต่ำยังต้องตั้งธงเหมือนเดิม แม้ความใกล้เคียงจะเต็ม
+prefilled_low_conf = score_question(question, "สาย G", 0.40, settings, prefilled_percent=100)
+check(
+    "confidence ต่ำ -> ยังตั้งธงให้ครูตรวจ แม้คนข้างนอกจะให้ 100%",
+    prefilled_low_conf.score == 1.0 and prefilled_low_conf.flagged,
+)
+
+prefilled_reason = score_question(
+    question, "x", 0.95, settings, prefilled_percent=70, prefilled_reasoning="ตอบถูกครึ่งเดียว"
+)
+check("เหตุผลที่ส่งมาถูกเก็บไว้ให้ครูอ่าน", prefilled_reason.reasoning == "ตอบถูกครึ่งเดียว")
+
+
 print(f"\n{'='*40}\nรวม: ผ่าน {passed} / ล้มเหลว {failed}\n{'='*40}")
 if failed:
     sys.exit(1)

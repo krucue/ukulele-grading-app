@@ -59,10 +59,22 @@ def score_question(
     ocr_confidence: float | None,
     settings: GradingSettings,
     llm_grader=None,
+    prefilled_percent: float | None = None,
+    prefilled_reasoning: str = "",
 ) -> ScoreResult:
+    """prefilled_percent: % ความใกล้เคียงที่ตัดสินมาจากข้างนอกแล้ว
+
+    ใช้ตอนที่คนอื่นเป็นคนอ่านและตัดสินความหมายให้ (เช่นครูอ่านเอง หรือให้ผู้ช่วย
+    ที่อ่านภาพได้ตัดสินให้ ในกรณีที่ยังไม่มี API key) ขั้นตอนที่เหลือ — เทียบขั้น
+    คะแนน ตั้งธง "ต้องตรวจสอบ" สรุปผล — ยังเดินตามเกณฑ์ในไฟล์เฉลยเหมือนเดิมทุกอย่าง
+    จึงได้คะแนนที่เทียบกันได้กับตอนตรวจด้วยระบบเต็ม
+    """
     reasoning = ""
 
-    if question.scoring_method == "llm_semantic":
+    if prefilled_percent is not None:
+        similarity = max(0.0, min(100.0, float(prefilled_percent)))
+        reasoning = prefilled_reasoning
+    elif question.scoring_method == "llm_semantic":
         if llm_grader is None:
             raise ValueError(
                 f"ข้อ {question.question_id} ใช้ scoring_method=llm_semantic "

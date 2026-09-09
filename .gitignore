@@ -37,6 +37,9 @@ settings.json
 *.png
 *.heic
 *.pdf
+# ยกเว้นใบอ้างอิง: เป็นกระดาษข้อสอบ "เปล่า" ไม่มีลายมือหรือชื่อนักเรียนอยู่เลย
+# และต้องอยู่คู่กับ config/regions.json เสมอ เพราะพิกัดตัดภาพวัดจากใบนี้
+!config/reference/*.png
 # ไฟล์คะแนนที่ครูทำเอง (Excel/Sheets) มีชื่อนักเรียนกับคะแนนรายคนอยู่ข้างใน
 *.xlsx
 *.xls
@@ -50,6 +53,9 @@ results_dry_run.csv
 results*.csv
 # ค่าเริ่มต้นของเว็บแอป (settings.json -> sheet.csv_path)
 ผลตรวจ*.csv
+# tools/make_crop_sheets.py — แผ่นภาพคำตอบและไฟล์คำตอบที่กรอกแล้ว มีลายมือกับคำตอบ
+# ของนักเรียนอยู่เต็ม ๆ (ไฟล์ .json ไม่โดนกฎ *.png ด้านบน จึงต้องกันทั้งโฟลเดอร์)
+ภาพคำตอบ/
 # grade_exam.py --keep-aligned
 _aligned_page*.png
 # tools/calibrate_regions.py

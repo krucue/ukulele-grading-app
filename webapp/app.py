@@ -18,7 +18,7 @@ from pathlib import Path
 
 from flask import Flask, jsonify, render_template, request
 
-from grading.align import align_and_crop_file
+from grading.align import imread_unicode
 from grading.config_loader import ExamConfig, load_config
 from grading.llm_grader import MockSemanticGrader
 from grading.ocr import MockOcrProvider, OcrResult
@@ -30,6 +30,7 @@ from grading.pipeline import (
     submission_to_sheet_row,
 )
 from grading.regions import crop_all_questions_on_page, load_region_template
+from grading.register import prepare_page
 from grading.scorer import ScoreResult
 from grading.settings import AppSettings, load_settings
 
@@ -94,34 +95,42 @@ def _pages_from_pdf(pdf_path: str, work_dir: str) -> tuple[dict[int, str], list[
 
 
 def _crops_from_photos(
-    paths: dict[int, str], regions_path: str, work_dir: str, from_scan: bool = False
+    paths: dict[int, str],
+    regions_path: str,
+    from_scan: bool = False,
+    strict: bool = False,
 ) -> tuple[dict, list[str]]:
-    """ปรับแนว + ตัดภาพต่อข้อ คืน (crops, รายการคำเตือน)
+    """ปรับแนว/จับคู่ใบอ้างอิง + ตัดภาพต่อข้อ คืน (crops, รายการคำเตือน)
 
     from_scan บอกว่าภาพมาจากเครื่องสแกน (แตกมาจาก PDF) ไม่ใช่ถ่ายด้วยมือถือ
     ใช้เลือกคำแนะนำในคำเตือนให้ตรงกับสิ่งที่ครูทำได้จริง
+
+    strict = โหมดตรวจจริง ถ้าจับคู่ใบอ้างอิงไม่สำเร็จต้องหยุดตรงนี้ ไม่ตัดภาพต่อ
+    เพราะกรอบที่เลื่อนยังตัด "ภาพอะไรสักอย่าง" ออกมาได้เสมอ แล้วครูจะได้คะแนนของ
+    แถวข้างเคียงมาโดยไม่มีอะไรฟ้อง — โหมดลองใช้งานปล่อยผ่านได้ เพราะคำตอบเป็นของจำลองอยู่แล้ว
     """
     template = load_region_template(regions_path)
     crops: dict = {}
     warnings: list[str] = []
     for page_number, photo_path in sorted(paths.items()):
-        aligned_path = os.path.join(work_dir, f"aligned_page{page_number}.png")
+        image = imread_unicode(photo_path)
+        if image is None:
+            raise GradingError(f"เปิดรูปหน้า {page_number} ไม่สำเร็จ — ไฟล์อาจเสียหรือไม่ใช่ไฟล์ภาพ")
         try:
-            align_result = align_and_crop_file(photo_path, aligned_path)
+            prepared = prepare_page(image, page_number, PROJECT_ROOT, from_scan=from_scan)
         # จับกว้าง ๆ ตั้งใจ — ครูควรเห็นข้อความไทยที่ทำอะไรต่อได้ ไม่ใช่ traceback ดิบ
         except Exception as exc:
-            raise GradingError(f"เปิดรูปหน้า {page_number} ไม่สำเร็จ: {exc}") from exc
-        if not align_result.corners_found:
-            # ภาพจากเครื่องสแกนมักหาขอบไม่เจอเป็นปกติ เพราะกระดาษเต็มเฟรมอยู่แล้ว
-            # ไม่มีพื้นหลังให้ตัดขอบ — ไม่ใช่อาการผิดปกติ และถ่ายใหม่ก็ไม่ช่วยอะไร
-            advice = (
-                "— ปกติของภาพจากเครื่องสแกน เพราะกระดาษเต็มเฟรมอยู่แล้ว "
-                "แต่ถ้าผลตรวจเพี้ยนทั้งหน้า ให้สแกนใหม่โดยวางกระดาษให้ชิดขอบและไม่เอียง"
-                if from_scan
-                else "— ตำแหน่งตัดภาพต่อข้ออาจเพี้ยน ควรถ่ายใหม่บนพื้นที่สีตัดกับกระดาษ"
-            )
-            warnings.append(f"หน้า {page_number}: หาขอบกระดาษไม่ชัด ใช้ภาพทั้งใบแทน {advice}")
-        crops.update(crop_all_questions_on_page(align_result.image, template, page_number))
+            raise GradingError(f"เตรียมรูปหน้า {page_number} ไม่สำเร็จ: {exc}") from exc
+
+        if prepared.failure:
+            if strict:
+                raise GradingError(prepared.failure)
+            warnings.append(prepared.failure)
+        warnings.extend(prepared.warnings)
+        try:
+            crops.update(crop_all_questions_on_page(prepared.image, template, page_number))
+        except ValueError as exc:
+            raise GradingError(f"ตัดภาพต่อข้อหน้า {page_number} ไม่สำเร็จ: {exc}") from exc
     return crops, warnings
 
 
@@ -300,10 +309,18 @@ def create_app(settings: AppSettings | None = None) -> Flask:
                     "— อัปโหลดไฟล์ PDF ที่สแกนมา หรือรูปให้ครบทั้ง 2 หน้า"
                 )
 
+            if mode == "real" and not settings_obj.ocr_ready:
+                # เช็คคีย์ก่อนลงมือดัด/ตัดภาพ — ถูกกว่า และตรงสาเหตุกว่าการไปบอกครู
+                # ให้สแกนกระดาษใหม่ทั้งที่ปัญหาจริงคือยังไม่ได้ตั้งค่า
+                raise GradingError(
+                    "โหมดตรวจจริงต้องตั้ง anthropic_api_key ใน settings.json ก่อน "
+                    "(ใช้อ่านลายมือจากรูป) — ระหว่างนี้เลือกโหมดลองใช้งานได้"
+                )
+
             crops = {}
             if saved_paths:
                 crops, align_warnings = _crops_from_photos(
-                    saved_paths, regions_path(), work_dir, from_scan=from_scan
+                    saved_paths, regions_path(), from_scan=from_scan, strict=(mode == "real")
                 )
                 warnings.extend(align_warnings)
 
@@ -313,11 +330,6 @@ def create_app(settings: AppSettings | None = None) -> Flask:
                     joined = ", ".join(missing)
                     raise GradingError(
                         f"ไม่มีพิกัดตัดภาพสำหรับข้อ {joined} — ตรวจ config/regions.json"
-                    )
-                if not settings_obj.ocr_ready:
-                    raise GradingError(
-                        "โหมดตรวจจริงต้องตั้ง anthropic_api_key ใน settings.json ก่อน "
-                        "(ใช้อ่านลายมือจากรูป) — ระหว่างนี้เลือกโหมดลองใช้งานได้"
                     )
                 try:
                     from grading.ocr import ClaudeVisionOcrProvider

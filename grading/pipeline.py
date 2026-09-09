@@ -28,7 +28,11 @@ def grade_submission(
     ocr_answers: dict[str, OcrResult],
     config: ExamConfig,
     llm_grader=None,
+    prefilled: dict[str, tuple[float, str]] | None = None,
 ) -> SubmissionResult:
+    """prefilled: {question_id: (% ความใกล้เคียง, เหตุผล)} ที่ตัดสินมาจากข้างนอกแล้ว
+    ข้อที่ไม่ได้ระบุไว้ยังคำนวณเองตามปกติ (ดู score_question)
+    """
     results: list[ScoreResult] = []
     total = 0.0
     needs_review = False
@@ -38,12 +42,15 @@ def grade_submission(
         text = ocr.text if ocr else ""
         confidence: float | None = ocr.confidence if ocr else 0.0
 
+        percent, reason = (prefilled or {}).get(question.question_id, (None, ""))
         result = score_question(
             question=question,
             student_answer=text,
             ocr_confidence=confidence,
             settings=config.grading_settings,
             llm_grader=llm_grader,
+            prefilled_percent=percent,
+            prefilled_reasoning=reason,
         )
         results.append(result)
         total += result.score

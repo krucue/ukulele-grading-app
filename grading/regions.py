@@ -34,15 +34,41 @@ def load_region_template(path: str | Path) -> RegionTemplate:
     )
 
 
-def crop_question(image: np.ndarray, template: RegionTemplate, question_id: str) -> np.ndarray:
-    """ตัดภาพเฉพาะส่วนคำตอบของ 1 ข้อ จากภาพเต็มหน้าที่ align แล้ว"""
-    if image.shape[1] != template.reference_width or image.shape[0] != template.reference_height:
+# ยอมให้ภาพใหญ่/เล็กกว่ากรอบอ้างอิงได้ ถ้าเป็นการย่อ-ขยายทั้งภาพเท่ากันทุกด้าน
+# (grading/register.py ดัดภาพออกมาที่ 2 เท่าเพื่อเก็บรายละเอียดลายมือจากสแกน 300 DPI)
+MAX_SCALE = 8.0
+MIN_SCALE = 0.5
+ASPECT_TOLERANCE = 0.01
+
+
+def scale_of(image: np.ndarray, template: RegionTemplate) -> float:
+    """ภาพนี้ใหญ่กว่ากรอบอ้างอิงกี่เท่า — ต้องเท่ากันทั้งแนวตั้งและแนวนอน
+
+    ถ้าสัดส่วนไม่ตรง แปลว่าภาพไม่ได้ผ่านขั้นตอนปรับแนว/จับคู่ใบอ้างอิงมา
+    พิกัดใน regions.json จะใช้กับภาพนั้นไม่ได้ ต้องหยุดตรงนี้ ไม่ใช่ตัดมั่วต่อไป
+    """
+    scale_x = image.shape[1] / template.reference_width
+    scale_y = image.shape[0] / template.reference_height
+    if abs(scale_x - scale_y) > ASPECT_TOLERANCE * max(scale_x, scale_y):
         raise ValueError(
-            f"ขนาดภาพ ({image.shape[1]}x{image.shape[0]}) ไม่ตรงกับ reference "
+            f"สัดส่วนภาพ ({image.shape[1]}x{image.shape[0]}) ไม่ตรงกับ reference "
             f"ของ regions.json ({template.reference_width}x{template.reference_height}) "
-            "— ต้อง align_and_crop() ให้ได้ขนาดนี้ก่อนเสมอ"
+            "— ต้อง align_and_crop() หรือ register_to_reference() ให้ได้สัดส่วนนี้ก่อนเสมอ"
         )
+    if not (MIN_SCALE <= scale_x <= MAX_SCALE):
+        raise ValueError(
+            f"ขนาดภาพ ({image.shape[1]}x{image.shape[0]}) ต่างจาก reference "
+            f"({template.reference_width}x{template.reference_height}) มากเกินไป ({scale_x:.2f} เท่า)"
+        )
+    return scale_x
+
+
+def crop_question(image: np.ndarray, template: RegionTemplate, question_id: str) -> np.ndarray:
+    """ตัดภาพเฉพาะส่วนคำตอบของ 1 ข้อ จากภาพเต็มหน้าที่ align/จับคู่ใบอ้างอิงแล้ว"""
+    scale = scale_of(image, template)
     left, top, right, bottom = template.regions[question_id]
+    if scale != 1.0:
+        left, top, right, bottom = (round(v * scale) for v in (left, top, right, bottom))
     return image[top:bottom, left:right]
 
 

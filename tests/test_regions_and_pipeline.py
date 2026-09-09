@@ -84,7 +84,14 @@ too_small = [
 ]
 check("ไม่มีกรอบที่เล็กจนอ่านลายมือไม่ได้ (กว้าง >= 50, สูง >= 20)", not too_small)
 
-# สองข้อในหน้าเดียวกันทับกัน = ตัดภาพเดียวกันไปตรวจสองข้อ คะแนนจะพันกันแบบไม่มีอะไรฟ้อง
+# สองข้อในหน้าเดียวกันทับกันเยอะ = ตัดภาพเดียวกันไปตรวจสองข้อ คะแนนจะพันกันแบบไม่มีอะไรฟ้อง
+#
+# ยอมให้เหลื่อมกันได้เล็กน้อยตามแนวตั้ง เพราะกรอบของข้อที่อยู่ในตาราง (1.x, 5.x)
+# ตั้งใจเผื่อล่างเกินเส้นคั่นไปนิดหนึ่ง เด็กหลายคนเขียนคร่อมเส้น ถ้าตัดตามเส้นเป๊ะ
+# หางตัวอักษรจะขาดหายไปทั้งบรรทัด (เจอจริงกับกระดาษที่ทดสอบ) ส่วนการเหลื่อมเกิน
+# เท่านี้แปลว่าพิกัดผิดจริง ต้องฟ้อง
+MAX_ALLOWED_OVERLAP = 8
+
 overlaps = []
 for page in sorted(set(template.page_of_question.values())):
     ids = sorted(qid for qid in template.regions if template.page_of_question.get(qid) == page)
@@ -92,9 +99,11 @@ for page in sorted(set(template.page_of_question.values())):
         ax0, ay0, ax1, ay1 = template.regions[a]
         for b in ids[i + 1:]:
             bx0, by0, bx1, by1 = template.regions[b]
-            if ax0 < bx1 and bx0 < ax1 and ay0 < by1 and by0 < ay1:
-                overlaps.append(f"{a}<->{b} (หน้า {page})")
-check(f"ไม่มีกรอบสองข้อในหน้าเดียวกันทับกัน {overlaps or ''}", not overlaps)
+            overlap_x = min(ax1, bx1) - max(ax0, bx0)
+            overlap_y = min(ay1, by1) - max(ay0, by0)
+            if overlap_x > 0 and overlap_y > MAX_ALLOWED_OVERLAP:
+                overlaps.append(f"{a}<->{b} (หน้า {page}, เหลื่อม {overlap_y} px)")
+check(f"ไม่มีกรอบสองข้อในหน้าเดียวกันทับกันเกิน {MAX_ALLOWED_OVERLAP} px {overlaps or ''}", not overlaps)
 
 print("\ncrop_question")
 fake_image = np.zeros((template.reference_height, template.reference_width, 3), dtype=np.uint8)

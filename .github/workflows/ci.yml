@@ -80,6 +80,9 @@ jobs:
       - name: เทส regions + pipeline
         run: python tests/test_regions_and_pipeline.py
 
+      - name: เทสจับคู่กระดาษกับใบอ้างอิง
+        run: python tests/test_register.py
+
       - name: เทสแตกหน้าจาก PDF ที่สแกนมา
         run: python tests/test_pdf_pages.py
 

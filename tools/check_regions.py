@@ -30,15 +30,17 @@ import cv2
 import numpy as np
 from PIL import Image, ImageDraw
 
-from grading.align import align_and_crop_file, imread_unicode
+from grading.align import imread_unicode
 from grading.console import enable_utf8_output
 from grading.pdf_pages import PdfExtractError, extract_scanned_pages
-from grading.regions import load_region_template
+from grading.regions import crop_question, load_region_template
+from grading.register import prepare_page
 
 # บังคับ UTF-8 ก่อนพิมพ์ผล — กัน UnicodeEncodeError บน console ไทย (cp874)
 enable_utf8_output()
 
-REGIONS_PATH = os.path.join(os.path.dirname(__file__), "..", "config", "regions.json")
+PROJECT_ROOT = os.path.join(os.path.dirname(__file__), "..")
+REGIONS_PATH = os.path.join(PROJECT_ROOT, "config", "regions.json")
 
 A4_RATIO = 2100 / 2970  # 0.7071 — กระดาษ A4 แนวตั้ง
 RATIO_TOLERANCE = 0.02  # เกินนี้แปลว่าเครื่องสแกนครอบกระดาษมาไม่ตรง (auto-crop ยังเปิดอยู่?)
@@ -128,10 +130,16 @@ def check_one(paths: list[str], template, out_dir: str, label: str) -> int:
                 problems += 1
             print(f"  หน้า {page_number}: ภาพดิบ {w}x{h}  อัตราส่วน {ratio:.4f} (A4 = {A4_RATIO:.4f}){flag}")
 
-            dst = os.path.join(work_dir, f"aligned{page_number}.png")
-            result = align_and_crop_file(raw_path, dst)
-            print(f"     align: เจอขอบกระดาษ = {result.corners_found}")
-            aligned[page_number] = result.image
+            # เดินทางเดียวกับตอนตรวจจริงเป๊ะ ๆ (ใบอ้างอิงก่อน ไม่มีค่อยถอยไปหาขอบกระดาษ)
+            # ไม่งั้นเครื่องมือนี้จะวัดคนละอย่างกับที่โปรแกรมทำจริง
+            prepared = prepare_page(raw, page_number, PROJECT_ROOT)
+            print(f"     เตรียมภาพด้วยวิธี: {prepared.method}")
+            if prepared.failure:
+                print(f"     [ตก] {prepared.failure}")
+                problems += 1
+            for warning in prepared.warnings:
+                print(f"     [เตือน] {warning}")
+            aligned[page_number] = prepared.image
 
         print(f"\n  {'ข้อ':<6}{'หมึกในกรอบ':>12}{'ติดขอบซ้ายขวา':>13}   สรุป")
         crops_for_sheet = []
@@ -142,8 +150,7 @@ def check_one(paths: list[str], template, out_dir: str, label: str) -> int:
                 print(f"  {qid:<6}{'-':>12}{'-':>13}   ไม่มีหน้า {page_number} ให้ตรวจ")
                 problems += 1
                 continue
-            left, top, right, bottom = template.regions[qid]
-            crop = image[top:bottom, left:right]
+            crop = crop_question(image, template, qid)
             ink, edge = ink_stats(crop)
 
             notes = []

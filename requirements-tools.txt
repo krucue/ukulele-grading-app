@@ -1,0 +1,7 @@
+# เครื่องมือ dev — ไม่ต้องติดตั้งเพื่อตรวจข้อสอบ ใช้เฉพาะตอนสร้างใบอ้างอิงใหม่
+#     pip install -r requirements-tools.txt
+
+# เรนเดอร์ PDF ต้นฉบับของข้อสอบเป็นรูป (tools/make_reference.py)
+# เลือก pypdfium2 เพราะเป็น wheel สำเร็จรูป ไม่ต้องลงโปรแกรมนอก pip เหมือน pdf2image
+# ที่ต้องมี poppler และสัญญาอนุญาตเป็น BSD/Apache ไม่ใช่ AGPL แบบ pymupdf
+pypdfium2>=4.30.0
