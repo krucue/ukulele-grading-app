@@ -210,6 +210,10 @@ def _result_to_dict(result: ScoreResult, config: ExamConfig) -> dict:
 def create_app(settings: AppSettings | None = None) -> Flask:
     app = Flask(__name__)
     app.config["MAX_CONTENT_LENGTH"] = MAX_UPLOAD_BYTES
+    # ห้ามแคชอะไรทั้งนั้น — โปรแกรมนี้รันในเครื่องครูเอง ไม่มีปัญหาเรื่องความเร็ว
+    # แต่มีปัญหาใหญ่เรื่องหน้าเก่าค้าง: เวลาอัปเดตโปรแกรมแล้วเปิดใหม่ เบราว์เซอร์
+    # อาจหยิบ app.js ตัวเก่าจากแคชมาใช้ ทำให้หน้าเว็บกับเซิร์ฟเวอร์เป็นคนละรุ่นกัน
+    app.config["SEND_FILE_MAX_AGE_DEFAULT"] = 0
     app.config["SETTINGS"] = settings if settings is not None else load_settings()
     app.config["SETTINGS"].apply_to_env()
     # หน้าเว็บโหลด js/css ใหม่จากดิสก์ทุกครั้ง แต่โค้ด Python ถูกอ่านเข้าหน่วยความจำ
@@ -245,6 +249,12 @@ def create_app(settings: AppSettings | None = None) -> Flask:
     def handle_too_large(_exc):
         mb = MAX_UPLOAD_BYTES // (1024 * 1024)
         return jsonify({"error": f"ไฟล์ใหญ่เกิน {mb} MB — ย่อรูปก่อนอัปโหลด"}), 413
+
+    @app.after_request
+    def no_cache(response):
+        response.headers["Cache-Control"] = "no-store, must-revalidate"
+        response.headers["Pragma"] = "no-cache"
+        return response
 
     @app.route("/")
     def index():

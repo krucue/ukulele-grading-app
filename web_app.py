@@ -17,6 +17,7 @@ import importlib.util
 import socket
 import sys
 import threading
+import time
 import webbrowser
 
 from grading.console import enable_utf8_output
@@ -112,8 +113,12 @@ def main() -> None:
     print("  (หน้าต่างนี้ต้องเปิดค้างไว้ตลอดเวลาที่ใช้งานเว็บ)\n")
 
     if not args.no_browser:
+        # ต่อท้ายด้วยเวลาที่เปิดโปรแกรม เพื่อให้เป็น URL ใหม่ทุกครั้ง — ถ้าใช้ URL เดิม
+        # เบราว์เซอร์จะแค่สลับไปที่แท็บที่เปิดค้างอยู่โดยไม่โหลดหน้าใหม่ ครูจึงเห็นหน้าเก่า
+        # ค้างอยู่ทั้งที่เพิ่งเปิดโปรแกรมใหม่ (เกิดขึ้นจริงแล้ว หลงคิดว่าโปรแกรมไม่ได้อัปเดต)
+        fresh_url = f"{url}?เปิดเมื่อ={int(time.time())}"
         # หน่วงนิดหนึ่งให้เซิร์ฟเวอร์ตื่นก่อน ไม่งั้นเบราว์เซอร์ขึ้น "ต่อไม่ได้"
-        threading.Timer(1.0, lambda: webbrowser.open(url)).start()
+        threading.Timer(1.0, lambda: webbrowser.open(fresh_url)).start()
 
     # ดันข้อความข้างบนออกจอให้หมดก่อนเข้าลูปเซิร์ฟเวอร์ที่บล็อกยาว — ถ้า stdout ถูก
     # redirect ลงไฟล์ (เช่นเปิดผ่านสคริปต์อื่น) ข้อความจะค้างอยู่ในบัฟเฟอร์จนโปรแกรมปิด

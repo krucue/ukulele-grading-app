@@ -26,8 +26,9 @@ const HERE = path.dirname(fileURLToPath(import.meta.url));
 const ROOT = path.join(HERE, "..");
 
 let JSDOM;
+let VirtualConsole;
 try {
-  ({ JSDOM } = await import("jsdom"));
+  ({ JSDOM, VirtualConsole } = await import("jsdom"));
 } catch (err) {
   // ใน CI ติดตั้งครบอยู่แล้ว ถ้า import ไม่ได้แปลว่ามีอะไรผิด ต้องให้ fail
   // ไม่ใช่ข้ามเงียบ ๆ ไม่งั้นเทสจะ "เขียวเพราะไม่ได้รัน"
@@ -129,7 +130,18 @@ const saveJson = {
 
 // ---------- ตั้ง DOM ----------
 
-const dom = new JSDOM(html, { runScripts: "outside-only", url: "http://127.0.0.1:5000/" });
+// จับ error ของ jsdom ไว้ด้วย — ใช้ตรวจว่าหน้าเว็บสั่งโหลดตัวเองใหม่จริง
+// (jsdom ทำ navigation ไม่ได้ มันจะยิง jsdomError ว่า "Not implemented: navigation" แทน)
+let navigationAttempted = false;
+const virtualConsole = new VirtualConsole();
+virtualConsole.on("jsdomError", (err) => {
+  if (String(err.message).includes("navigation")) navigationAttempted = true;
+});
+const dom = new JSDOM(html, {
+  runScripts: "outside-only",
+  url: "http://127.0.0.1:5000/",
+  virtualConsole,
+});
 const { window } = dom;
 const $ = (id) => window.document.getElementById(id);
 
@@ -322,6 +334,16 @@ check(
   "บอกวิธีแก้ตรง ๆ ว่าให้เปิดโปรแกรมใหม่",
   $("staleBanner").textContent.includes("เปิดโปรแกรมตรวจข้อสอบ.bat")
 );
+check("บอกให้กด F5 ด้วย ไม่ใช่แค่เปิดโปรแกรมใหม่", $("staleBanner").textContent.includes("F5"));
+
+// หน้าที่ค้างอยู่ต้องรู้ตัวเองเมื่อครูเปิดโปรแกรมใหม่แล้ว — ไม่ต้องรอให้ครูกด F5
+// (เบราว์เซอร์มักสลับมาที่แท็บเดิมโดยไม่โหลดหน้าใหม่ ครูจึงเห็นภาพเก่าค้างอยู่)
+navigationAttempted = false;
+statusJson.stale_server = false;
+// จังหวะจริง: ครูไปเปิดโปรแกรมใหม่ในหน้าต่างสีดำ แล้วคลิกกลับมาที่เบราว์เซอร์
+window.dispatchEvent(new window.Event("focus"));
+await tick();
+check("เซิร์ฟเวอร์กลับมาเป็นรุ่นใหม่แล้ว -> หน้าเว็บสั่งโหลดตัวเองใหม่", navigationAttempted);
 
 
 // ---------- ข้อความเรื่อง settings.json ต้องตรงกับความจริง ----------

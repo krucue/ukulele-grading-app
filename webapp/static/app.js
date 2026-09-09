@@ -21,6 +21,9 @@ function hide(el) {
 
 // ---------- สถานะระบบ ----------
 
+let firstStatusLoad = true;
+let sawStaleServer = false;
+
 async function loadStatus() {
   let data;
   try {
@@ -74,6 +77,15 @@ async function loadStatus() {
   }
 
   // เซิร์ฟเวอร์ที่รันอยู่เป็นคนละรุ่นกับไฟล์บนดิสก์ = ทุกอย่างหลังจากนี้เชื่อไม่ได้
+  //
+  // ถ้าหน้านี้เคยเห็นว่า stale แล้วรอบนี้ไม่ stale แปลว่าครูปิดแล้วเปิดโปรแกรมใหม่
+  // เรียบร้อย แต่หน้าเว็บยังเป็นภาพเก่าค้างอยู่ (เบราว์เซอร์แค่สลับมาที่แท็บเดิม
+  // ไม่ได้โหลดใหม่) — โหลดหน้าใหม่ให้เลย ไม่ต้องให้ครูมานั่งกด F5 เอง
+  if (sawStaleServer && !data.stale_server) {
+    window.location.reload();
+    return;
+  }
+  if (data.stale_server) sawStaleServer = true;
   $("staleBanner").hidden = !data.stale_server;
 
   $("saveTarget").textContent = `จะบันทึกลง: ${data.sheet_target}`;
@@ -82,7 +94,8 @@ async function loadStatus() {
   const realInput = document.querySelector('input[name="mode"][value="real"]');
   // ตรวจจริงได้เมื่อไหร่ให้เลือกไว้ให้เลย — ครูเปิดโปรแกรมมาเพื่อตรวจกระดาษจริง
   // ไม่ใช่มาดูตัวอย่าง การปล่อยให้ค้างที่โหมดลองใช้งานคือต้นเหตุที่ครูเผลอตรวจผิดโหมด
-  if (data.ready.real) realInput.checked = true;
+  // เลือกให้เฉพาะครั้งแรกที่โหลดหน้า ไม่ไปแย่งเปลี่ยนตอนครูเลือกเองแล้ว
+  if (data.ready.real && firstStatusLoad) realInput.checked = true;
   if (!data.ready.ocr) {
     realInput.disabled = true;
     $("realMode").classList.add("disabled");
@@ -429,4 +442,16 @@ $("saveBtn").addEventListener("click", async () => {
   }
 });
 
-loadStatus();
+loadStatus().then(() => {
+  firstStatusLoad = false;
+});
+
+// ถามสถานะซ้ำเรื่อย ๆ — หน้าเว็บที่เปิดค้างไว้ข้ามวันจะรู้เองว่าโปรแกรมถูกอัปเดตหรือ
+// เปิดใหม่แล้ว แทนที่จะแสดงภาพเก่าค้างอยู่โดยไม่มีอะไรบอก
+setInterval(loadStatus, 20000);
+
+// ถามทันทีตอนครูสลับกลับมาที่หน้านี้ด้วย — จังหวะที่เกิดปัญหาจริงคือครูไปปิด/เปิด
+// หน้าต่างสีดำแล้วคลิกกลับมาที่เบราว์เซอร์ ตรงนั้นควรรู้ผลทันที ไม่ต้องรอครบ 20 วินาที
+window.addEventListener("focus", () => {
+  loadStatus();
+});
