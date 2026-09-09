@@ -36,7 +36,7 @@ class AppSettings:
     google_credentials_path: str = ""
 
     sheet_mode: str = "csv"                    # "csv" | "google"
-    csv_path: str = "ผลตรวจ.csv"
+    csv_path: str = "ข้อมูล/ผลตรวจ/ผลตรวจ.csv"
     spreadsheet_id: str = ""
 
     answer_key_path: str = "config/answer_key_config.json"

@@ -13,7 +13,7 @@
   "sheet": {
     "_mode": "csv = บันทึกลงไฟล์ในเครื่อง (ไม่ต้องตั้งอะไรเลย) · google = บันทึกลง Google Sheets (ต้องมี google_credentials_path)",
     "mode": "csv",
-    "csv_path": "ผลตรวจ.csv",
+    "csv_path": "ข้อมูล/ผลตรวจ/ผลตรวจ.csv",
     "_spreadsheet_id": "รหัสยาว ๆ ใน URL ของ Sheet: docs.google.com/spreadsheets/d/<ตรงนี้>/edit",
     "spreadsheet_id": ""
   },

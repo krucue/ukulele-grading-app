@@ -59,6 +59,7 @@ Word/Google Docs ใช้ไม่ได้ (ไม่มีรูปให้�
 | `claude_model` | เลือกโมเดล | ใช้ `claude-opus-5` (อ่านลายมือแม่นสุด) · อยากประหยัดเปลี่ยนเป็น `claude-sonnet-5` ได้ |
 | `google_credentials_path` | service account ของ Google — ใช้เฉพาะตอนบันทึกลง Google Sheets | ไม่กระทบการตรวจเลย บันทึกลงไฟล์ CSV ได้ตามปกติ |
 | `sheet.mode` | `csv` = ลงไฟล์ในเครื่อง / `google` = ลง Google Sheets | ใช้ `csv` |
+| `sheet.csv_path` | ไฟล์ปลายทางเมื่อใช้โหมด csv | ใช้ `ข้อมูล/ผลตรวจ/ผลตรวจ.csv` (สร้างโฟลเดอร์ให้เอง) |
 | `sheet.spreadsheet_id` | รหัสใน URL ของ Sheet | ถ้าเลือก `google` แล้วไม่ใส่ จะขึ้นเตือนในหน้า "สถานะระบบ" |
 
 ขอคีย์ที่ [console.anthropic.com](https://console.anthropic.com) > API keys > Create key
@@ -94,9 +95,9 @@ Word/Google Docs ใช้ไม่ได้ (ไม่มีรูปให้�
 
 ```bash
 pip install -r requirements-tools.txt                     # ครั้งเดียว ใช้เรนเดอร์ PDF ต้นฉบับ
-python tools/make_reference.py Final_exam_G6_EN.pdf --ชื่อ อังกฤษ
-python tools/make_reference.py กระดาษเปล่า.pdf --ชื่อ ไทย     # ถ้าข้อสอบมีหลายเวอร์ชัน
-python tools/check_regions.py ใบ1.pdf ใบ2.pdf ใบ3.pdf     # ตรวจซ้ำด้วยกระดาษจริงหลายใบ
+python tools/make_reference.py ข้อมูล/ข้อสอบ/Final_exam_G6_EN.pdf --ชื่อ อังกฤษ
+python tools/make_reference.py ข้อมูล/ข้อสอบ/กระดาษเปล่า.pdf --ชื่อ ไทย   # ถ้าข้อสอบมีหลายเวอร์ชัน
+python tools/check_regions.py ข้อมูล/กระดาษนักเรียน/61/*.pdf   # ตรวจซ้ำด้วยกระดาษจริงหลายใบ
 ```
 
 ใส่ได้ทั้ง **PDF ต้นฉบับที่ใช้พิมพ์ข้อสอบ** (ดีที่สุด — ไม่มีความเพี้ยนจากเครื่องสแกนเลย)
@@ -123,14 +124,17 @@ API key ยังมีทางตรวจที่ได้คะแนนแ
 
 ```bash
 # 1) ทำแผ่นภาพคำตอบ 1 แผ่นต่อคน (ผ่านการจับคู่ใบอ้างอิงและตัดภาพเหมือนตอนตรวจจริง)
-python tools/make_crop_sheets.py file/61/*.pdf --out ภาพคำตอบ
+python tools/make_crop_sheets.py ข้อมูล/กระดาษนักเรียน/61/*.pdf --out ข้อมูล/ภาพคำตอบ
 
-# 2) เปิดไฟล์ ภาพคำตอบ/<ชื่อ>.png อ่านคำตอบ แล้วกรอกลง ภาพคำตอบ/<ชื่อ>.json
+# 2) เปิดไฟล์ ข้อมูล/ภาพคำตอบ/<ชื่อ>.png อ่านคำตอบ แล้วกรอกลง <ชื่อ>.json ที่อยู่ข้าง ๆ
 #    text = คำตอบที่อ่านได้ · confidence = มั่นใจว่าอ่านถูกแค่ไหน (0-1)
 #    percent = ใกล้เคียงเฉลยกี่ % (0-100) · reasoning = เหตุผลสั้น ๆ ให้ครูอ่าน
 
 # 3) คิดคะแนนด้วยเกณฑ์เดิมแล้วบันทึกผล
-python grade_exam.py --pdf file/61/929.pdf --answers ภาพคำตอบ/929.json     --student-name "ชื่อนักเรียน" --student-no 12 --student-class 6/1     --sheet csv --sheet-path ผลตรวจ-6-1.csv
+python grade_exam.py --pdf ข้อมูล/กระดาษนักเรียน/61/929.pdf \
+    --answers ข้อมูล/ภาพคำตอบ/929.json \
+    --student-name "ชื่อนักเรียน" --student-no 12 --student-class 6/1 \
+    --sheet csv --sheet-path ข้อมูล/ผลตรวจ/ผลตรวจ-6-1.csv
 ```
 
 ใครกรอกไฟล์ json ก็ได้ — ครูอ่านเอง ผู้ช่วยอ่านให้ หรือเปิดแผ่นภาพใน Claude Code
@@ -195,6 +199,11 @@ grading_app/
 │   ├── test_sdk_contract.py          # ใช้ SDK ตัวจริง (ไม่ปลอมโมดูล) จับกรณีไลบรารีอัปเวอร์ชันแล้วเปลี่ยน API
 │   ├── test_webapp.py                # เว็บแอปทุก endpoint + settings.py (จับคะแนนลงผิดคอลัมน์)
 │   └── test_webapp_ui.mjs            # หน้าเว็บฝั่งเบราว์เซอร์ด้วย jsdom (กันบันทึกซ้ำ, ล้างของคนเก่า)
+├── ข้อมูล/              # ของครูล้วน ๆ ไม่ขึ้น repo (.gitignore กันไว้ทั้งโฟลเดอร์)
+│   ├── ข้อสอบ/          # ไฟล์ต้นฉบับข้อสอบ ใช้สร้างใบอ้างอิง
+│   ├── กระดาษนักเรียน/  # ไฟล์สแกนที่จะเอามาตรวจ แยกตามห้อง
+│   ├── ภาพคำตอบ/        # แผ่นภาพคำตอบต่อคน + ไฟล์คำตอบที่กรอกแล้ว
+│   └── ผลตรวจ/          # ไฟล์คะแนนที่ระบบบันทึกออกมา
 ├── requirements.txt    # ของที่ต้องใช้จริง — .bat ติดตั้งให้เองรอบแรก
 ├── requirements-google.txt  # ส่วนเสริม ติดตั้งเฉพาะถ้าจะบันทึกลง Google Sheets
 ├── requirements-tools.txt   # ส่วนเสริม ติดตั้งเฉพาะตอนสร้างใบอ้างอิงใหม่ (เรนเดอร์ PDF ต้นฉบับ)

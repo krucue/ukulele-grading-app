@@ -1,16 +1,18 @@
 """
 ทำ "แผ่นภาพคำตอบ" 1 แผ่นต่อนักเรียน 1 คน — ใช้ตรวจโดยไม่ต้องมี API key
 
-    python tools/make_crop_sheets.py file/61/*.pdf --out ภาพคำตอบ
+    python tools/make_crop_sheets.py ข้อมูล/กระดาษนักเรียน/61/*.pdf --out ข้อมูล/ภาพคำตอบ
 
 แต่ละแผ่นคือภาพคำตอบทั้ง 12 ข้อของคนนั้นเรียงลงมาพร้อมป้ายเลขข้อ (ผ่านขั้นตอน
 จับคู่ใบอ้างอิงและตัดภาพแบบเดียวกับตอนตรวจจริงทุกอย่าง) พร้อมไฟล์ <ชื่อ>.json
 ที่เว้นช่องไว้ให้กรอกคำตอบที่อ่านได้
 
+รันซ้ำได้ตลอด แผ่นภาพจะถูกสร้างใหม่ แต่ไฟล์ .json ที่กรอกไว้แล้วจะไม่ถูกเขียนทับ
+
 ใช้ทำอะไร: ครูที่ยังไม่มี anthropic_api_key เปิดแผ่นภาพนี้ใน Claude Code (หรืออ่านเอง)
 แล้วกรอกคำตอบกับ % ความใกล้เคียงลงไฟล์ json จากนั้นสั่ง
 
-    python grade_exam.py --page1 ... --page2 ... --answers ภาพคำตอบ/<ชื่อ>.json --sheet csv
+    python grade_exam.py --pdf <ไฟล์สแกน>.pdf --answers ข้อมูล/ภาพคำตอบ/<ชื่อ>.json --sheet csv
 
 การให้คะแนนตามขั้น (tier) การตั้งธง "ต้องตรวจสอบ" และไฟล์ผลลัพธ์ ยังเป็นชุดเดิม
 ทั้งหมด เปลี่ยนแค่ว่า "ใครเป็นคนอ่านลายมือและตัดสินความใกล้เคียง" เท่านั้น
@@ -153,11 +155,18 @@ def main() -> None:
 
             sheet_path = os.path.join(out_dir, f"{name}.png")
             build_sheet(crops, order, sheet_path)
-            json_path = os.path.join(out_dir, f"{name}.json")
-            with open(json_path, "w", encoding="utf-8") as f:
-                json.dump(answer_template(config, crops), f, ensure_ascii=False, indent=2)
             print(f"  แผ่นภาพคำตอบ: {sheet_path}")
-            print(f"  ไฟล์รอกรอก:   {json_path}")
+
+            # ห้ามเขียนทับไฟล์คำตอบที่กรอกไว้แล้วเด็ดขาด — รันเครื่องมือนี้ซ้ำเป็นเรื่องปกติ
+            # (เพิ่มคนใหม่เข้าโฟลเดอร์เดิม, ปรับพิกัดแล้วทำแผ่นภาพใหม่) ถ้าทับ คำตอบกับ
+            # คะแนนที่นั่งกรอกมาทั้งห้องจะหายเกลี้ยงโดยไม่มีอะไรเตือน
+            json_path = os.path.join(out_dir, f"{name}.json")
+            if os.path.exists(json_path):
+                print(f"  ไฟล์คำตอบ:    {json_path} (มีอยู่แล้ว ไม่เขียนทับ)")
+            else:
+                with open(json_path, "w", encoding="utf-8") as f:
+                    json.dump(answer_template(config, crops), f, ensure_ascii=False, indent=2)
+                print(f"  ไฟล์รอกรอก:   {json_path}")
 
     print()
     print(f"เสร็จแล้ว — ทำสำเร็จ {len(args) - failures} จาก {len(args)} คน")

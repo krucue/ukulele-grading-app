@@ -28,6 +28,10 @@ class CsvDryRunWriter:
         self.path = Path(path)
 
     def ensure_header(self, header: list[str]) -> None:
+        # สร้างโฟลเดอร์ปลายทางให้ด้วย — ค่า csv_path ใน settings.json ตั้งเป็น path
+        # ซ้อนโฟลเดอร์ได้ (ค่าเริ่มต้นก็ชี้เข้า ข้อมูล/ผลตรวจ/) ถ้าไม่สร้างให้ ครูจะเจอ
+        # error ตอนกดบันทึกซึ่งเป็นขั้นตอนสุดท้ายสุด หลังตรวจเสร็จหมดแล้ว
+        self.path.parent.mkdir(parents=True, exist_ok=True)
         if not self.path.exists():
             with open(self.path, "w", newline="", encoding="utf-8-sig") as f:
                 csv.writer(f).writerow(header)
