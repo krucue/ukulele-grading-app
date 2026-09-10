@@ -153,9 +153,82 @@ input.score-input.edited { border-color: var(--ochre); background: #FFFBF4; }
 .status-panel ul { margin: 0 0 10px; padding-left: 20px; }
 .status-panel li { font-size: 14px; }
 
-@media (max-width: 620px) {
-  .score-table .qlabel, .answer { max-width: none; }
+/* ---------- จอมือถือ ----------
+   เปิดจากมือถือได้ตั้งแต่มี --มือถือ ใน web_app.py จอที่เจอบ่อยที่สุดคือ 360-430px
+   จุดที่พังหนักสุดคือตารางผลตรวจ 4 คอลัมน์ 12 แถว — บนจอ 6 นิ้วคอลัมน์ "คำตอบที่
+   อ่านได้" เหลือกว้างไม่ถึง 100px ข้อความหักบรรทัดทีละ 2-3 ตัวอักษร อ่านไม่ได้เลย
+   จึงพับตารางเป็นการ์ดต่อข้อแทน แล้วเอาตัวเลข 2 ตัวไปเรียงเป็นแถวล่างของการ์ด */
+@media (max-width: 700px) {
+  .wrap { padding: 0 14px; }
+  .panel { padding: 16px 14px; }
   .topbar-inner { flex-direction: column; align-items: flex-start; }
+
+  .score-table .qlabel, .answer { max-width: none; }
+
+  /* ซ่อนหัวตารางแทนที่จะ display:none ทั้ง thead — ยังต้องให้ screen reader อ่านได้ */
+  .score-table thead {
+    position: absolute;
+    width: 1px; height: 1px;
+    overflow: hidden;
+    clip: rect(0 0 0 0);
+    white-space: nowrap;
+  }
+
+  .score-table, .score-table tbody, .score-table tr, .score-table td { display: block; }
+
+  .score-table tr {
+    border: 1px solid var(--border);
+    border-radius: 10px;
+    padding: 12px 14px 8px;
+    margin-bottom: 12px;
+    background: var(--card);
+  }
+  .score-table tr.flagged { border-color: var(--flag-border); }
+
+  .score-table td { border-bottom: 0; padding: 0 0 8px; }
+
+  /* ตัวเลข 2 ช่องท้ายวางเรียงกันเป็นแถวเดียว ไม่ใช่ซ้อนกันลงมาให้การ์ดยาวเกินจำเป็น */
+  .score-table td.num {
+    display: inline-flex;
+    align-items: center;
+    gap: 8px;
+    width: 50%;
+    padding-top: 8px;
+    border-top: 1px solid var(--border);
+    text-align: left;
+  }
+  .score-table td.num::before {
+    content: attr(data-label);
+    font-size: 13px;
+    color: var(--muted);
+  }
+
+  /* ช่องกรอกคะแนนคือสิ่งที่ครูต้องกดบ่อยที่สุดบนมือถือ ต้องสูงพอสำหรับนิ้ว (44px
+     คือขนาดต่ำสุดที่ Apple แนะนำ) และ 16px ขึ้นไปเท่านั้น ไม่งั้น Safari ซูมหน้าจอเอง */
+  input.score-input {
+    width: 68px;
+    min-height: 44px;
+    font-size: 16px;
+  }
+
+  /* ปุ่มหลักเต็มความกว้าง กดพลาดยาก */
+  button.primary, button.secondary {
+    width: 100%;
+    min-height: 48px;
+    padding: 12px 16px;
+  }
+  .save-row { flex-direction: column; align-items: stretch; }
+  .save-row .hint { text-align: center; }
+
+  /* ช่องกรอกทุกช่องต้อง 16px ขึ้นไปด้วยเหตุผลเดียวกับช่องคะแนน */
+  input[type="text"] { font-size: 16px; min-height: 44px; }
+  .fields label.narrow { flex: 1 1 120px; }
+
+  /* กรอบใส่รูปเรียงลงมาทีละใบ วางซ้อนกัน 2 ใบบนจอแคบแล้วเล็กจนกดยาก */
+  .drops { flex-direction: column; }
+  .drop { min-height: 120px; }
+
+  .score-big { font-size: 28px; }
 }
 
 /* แถบเตือนโหมดลองใช้งาน — ต้องสะดุดตากว่า warn-box ปกติ เพราะเป็นจุดที่ครูเข้าใจผิด

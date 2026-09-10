@@ -6,7 +6,11 @@
     ถ้าพลาดตรงนี้คะแนนจะลงผิดช่องใน Google Sheets แบบเงียบ ๆ ไม่มี error ให้เห็น
   - โหมดตรวจจริงต้องปฏิเสธเมื่อยังไม่ได้ตั้ง credentials ไม่ใช่เงียบ ๆ ถอยไปใช้ของปลอม
     แล้วให้ครูเข้าใจผิดว่าคะแนนนี้มาจากลายมือจริง
-  - ไฟล์แนบชนิดที่ opencv อ่านไม่ได้ (.txt, .heic) ต้องถูกตีกลับพร้อมเหตุผล
+  - ไฟล์แนบชนิดที่ opencv อ่านไม่ได้ (.txt, .pdf ใส่ผิดช่อง) ต้องถูกตีกลับพร้อมเหตุผล
+    ส่วน .heic ของ iPhone รับไว้แล้วแปลงเป็น .jpg ให้เอง ต้องหมุนตามธง EXIF ด้วย
+    ไม่งั้นกระดาษออกมานอนตะแคงแล้วจับคู่กับใบอ้างอิงไม่ได้
+  - ด่านรหัสผ่าน (access_code) ต้องกันทั้งหน้าเว็บและ /api/ ไม่ใช่กันแต่ HTML
+    แล้วปล่อยให้ยิงตรงเข้า /api/save ได้ ซึ่งเท่ากับไม่ได้กันอะไรเลย
 
 รัน: python tests/test_webapp.py
 """
@@ -23,8 +27,10 @@ from pathlib import Path
 
 sys.path.insert(0, os.path.join(os.path.dirname(__file__), ".."))
 
+from grading.align import imread_unicode
 from grading.config_loader import load_config
 from grading.console import enable_utf8_output
+from grading.heic import convert_to_jpeg, heic_supported, is_heic
 from grading.pipeline import SubmissionResult, submission_to_sheet_row
 from grading.settings import DEFAULT_CLAUDE_MODEL, AppSettings, load_settings
 
@@ -150,6 +156,7 @@ except ImportError:
 # ต้อง import หลังเช็ค flask ด้านบน ไม่งั้นเครื่องที่ยังไม่ได้ pip install
 # จะตายตั้งแต่บรรทัด import แทนที่จะได้ข้อความบอกวิธีแก้
 import web_app  # noqa: E402
+from webapp import app as webapp_app  # noqa: E402
 from webapp import create_app  # noqa: E402
 
 # web_app.py คือไฟล์ที่ .bat เรียก เป็นทางเข้าหลักของครู แต่ไม่มีเทสไหนแตะเลย
@@ -239,8 +246,11 @@ with tempfile.TemporaryDirectory() as tmpdir:
         data={"mode": "demo", "page1": (BytesIO(b"\x00\x01"), "IMG_1234.heic")},
         content_type="multipart/form-data",
     )
-    check("ไฟล์ .heic ถูกตีกลับพร้อมบอกวิธีแก้", res.status_code == 400)
-    check("บอกให้แปลงเป็น jpg", "jpg" in res.get_json()["error"])
+    # .heic ที่ดีถูกแปลงให้เองแล้ว (ดูหัวข้อ "รูป .heic จาก iPhone" ข้างล่าง) แต่ไฟล์ที่
+    # พังต้องยังถูกตีกลับพร้อมบอกวิธีแก้ ไม่ใช่ปล่อยไปตายตอน opencv อ่านแล้วคืน None
+    # ซึ่งขึ้นแค่ "ไฟล์อาจเสีย" ลอย ๆ โดยไม่บอกว่าต้องทำอะไรต่อ
+    check("ไฟล์ .heic ที่พังถูกตีกลับ", res.status_code == 400)
+    check("บอกวิธีแก้ ไม่ใช่แค่บอกว่าไฟล์เสีย", "jpg" in res.get_json()["error"], res.get_json()["error"][:110])
 
     # ---------- อัปโหลดไฟล์ PDF ที่สแกนมา ----------
     # เครื่องสแกนคายไฟล์ออกมาเป็น PDF ไฟล์เดียวจบทั้ง 2 หน้า ครูต้องใส่ของนั้นได้เลย
@@ -439,6 +449,87 @@ with tempfile.TemporaryDirectory() as tmpdir:
     )
     check("คะแนนที่ไม่ใช่ตัวเลขถูกตีกลับ", res.status_code == 400)
     check("บอกว่าข้อไหนพัง", first_q.question_id in res.get_json()["error"])
+
+
+# ---------------------------------------------------------------------------
+# รูป .heic จาก iPhone
+#
+# iPhone ตั้งกล้องมาจากโรงงานเป็น High Efficiency ซึ่งเซฟเป็น .heic ที่ opencv
+# อ่านไม่ได้ ครูที่ถ่ายด้วย iPhone แล้วอัปโหลดตรง ๆ จึงติดตั้งแต่ประตูแรก
+# ตอนนี้รับไว้แล้วแปลงเป็น .jpg ให้เองก่อนส่งเข้าขั้นตอนตรวจ
+# ---------------------------------------------------------------------------
+print("\nรูป .heic จาก iPhone")
+
+check("เว็บแอปรับ .heic เข้ามาได้แล้ว", ".heic" in webapp_app.UPLOADABLE_IMAGE_SUFFIXES)
+check("แต่ยังไม่ส่ง .heic ต่อให้ opencv ตรง ๆ", ".heic" not in webapp_app.ALLOWED_IMAGE_SUFFIXES)
+
+try:
+    import pillow_heif
+    from PIL import Image
+except ImportError as exc:
+    if os.environ.get("CI"):
+        check("import pillow-heif ได้ (CI ต้องติดตั้งครบ)", False, str(exc))
+    else:
+        print(f"  [ข้าม] ยังไม่ได้ติดตั้ง pillow-heif ({exc}) — ข้ามเทสแปลง .heic")
+else:
+    pillow_heif.register_heif_opener()
+    check("heic_supported() = จริง เมื่อติดตั้งครบ", heic_supported())
+
+    with tempfile.TemporaryDirectory() as tmpdir:
+        # iPhone ถ่ายแนวตั้งแต่เก็บภาพไว้แนวนอน แล้วใส่ธง EXIF บอกให้หมุนทีหลัง
+        # ถ้าไม่หมุนตามธง กระดาษจะออกมานอนตะแคง แล้ว register.py จับคู่กับใบอ้างอิง
+        # ไม่ได้เลย — เป็นคนละเรื่องกับ "ภาพเอียงนิดหน่อย" ที่ align.py แก้ให้ได้
+        landscape = Image.new("RGB", (600, 400), (240, 238, 230))
+        exif = landscape.getexif()
+        exif[274] = 6  # Orientation = 6 คือต้องหมุน 90 องศา
+        heic_path = Path(tmpdir) / "รูปจากไอโฟน.heic"
+        landscape.save(heic_path, format="HEIF", exif=exif.tobytes())
+
+        check("is_heic() ดูจาก path เต็มได้", is_heic(heic_path) and not is_heic("รูป.jpg"))
+        # Path(".heic").suffix คืนค่าว่าง เพราะ Python มองว่าเป็นชื่อไฟล์ซ่อน ไม่ใช่นามสกุล
+        # เคยพลาดตรงนี้จริง: ไฟล์ .heic หลุดผ่านด่านแปลงไปถึง opencv แล้วตายด้วยข้อความ
+        # "ไฟล์อาจเสีย" ซึ่งไม่ได้บอกอะไรครูเลย
+        check("is_heic() รับนามสกุลล้วนได้ด้วย", is_heic(".heic") and is_heic(".HEIF") and not is_heic(".jpg"))
+
+        jpeg_path = Path(tmpdir) / "แปลงแล้ว.jpg"
+        convert_to_jpeg(heic_path, jpeg_path)
+        check("แปลงเป็น .jpg ได้จริง", jpeg_path.exists())
+        with Image.open(jpeg_path) as converted:
+            check("หมุนตามธง EXIF ให้แล้ว (600x400 -> 400x600)", converted.size == (400, 600))
+            check("บันทึกเป็น RGB ที่ JPEG รับได้", converted.mode == "RGB")
+        check("opencv อ่านไฟล์ที่แปลงแล้วได้", imread_unicode(str(jpeg_path)) is not None)
+
+    # ต้องเดินผ่าน /api/grade จริง ไม่ใช่เรียก convert_to_jpeg ตรง ๆ อย่างเดียว
+    # เพราะจุดที่เคยพังคือด่านเช็คนามสกุลใน _save_upload ไม่ใช่ตัวแปลง
+    with tempfile.TemporaryDirectory() as tmpdir:
+        heic_app = create_app(
+            AppSettings(csv_path=str(Path(tmpdir) / "ผลตรวจ.csv"), ocr_provider="api")
+        )
+        heic_client = heic_app.test_client()
+
+        def heic_bytes(size=(620, 877)):
+            buf = BytesIO()
+            Image.new("RGB", size, (240, 238, 230)).save(buf, format="HEIF")
+            return BytesIO(buf.getvalue())
+
+        res = heic_client.post(
+            "/api/grade",
+            data={
+                "mode": "demo",
+                "student_name": "ด.ช. ถ่ายด้วยไอโฟน",
+                "page1": (heic_bytes(), "IMG_0001.HEIC"),
+                "page2": (heic_bytes(), "IMG_0002.heic"),
+            },
+            content_type="multipart/form-data",
+        )
+        check(
+            "อัปโหลด .heic ผ่าน /api/grade ได้ ไม่ถูกตีกลับที่ด่านนามสกุล",
+            res.status_code == 200,
+            res.get_data(as_text=True)[:200],
+        )
+        # นามสกุลตัวใหญ่ (IMG_0001.HEIC) คือของจริงที่ iPhone ตั้งมา ถ้าเทียบแบบ
+        # case-sensitive จะตกด่านทั้งที่เป็นไฟล์เดียวกัน
+        check("รับนามสกุลตัวใหญ่ .HEIC ที่ iPhone ตั้งมาด้วย", res.status_code == 200)
 
 
 # ---------------------------------------------------------------------------

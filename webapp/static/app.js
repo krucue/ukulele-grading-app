@@ -367,12 +367,16 @@ function renderResults(data) {
       tdA.appendChild(p);
     }
 
+    // data-label ใช้บนจอมือถือ ที่ CSS พับตารางเป็นการ์ดแล้วซ่อนหัวตารางทิ้ง
+    // ถ้าไม่มีป้ายกำกับ ตัวเลข 2 ตัวจะลอยอยู่เฉย ๆ ไม่รู้ว่าอันไหนคือคะแนน
     const tdSim = document.createElement("td");
     tdSim.className = "num";
+    tdSim.dataset.label = "ใกล้เคียง";
     tdSim.textContent = `${r.similarity_percent}%`;
 
     const tdScore = document.createElement("td");
     tdScore.className = "num";
+    tdScore.dataset.label = "คะแนน";
     const input = document.createElement("input");
     input.type = "number";
     input.className = "score-input";

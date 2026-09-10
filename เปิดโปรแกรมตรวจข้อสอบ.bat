@@ -15,8 +15,10 @@ if not defined PYEXE (
 if not defined PYEXE goto nopython
 
 rem ครั้งแรกในเครื่องใหม่จะยังไม่มีไลบรารี ติดตั้งให้เลยดีกว่าปล่อยให้พังตอนกดตรวจ
-rem เช็คทั้ง 4 ตัวที่ต้องใช้จริง — anthropic คือตัวที่ใช้อ่านลายมือกับตรวจข้อบรรยาย
-%PYEXE% -c "import flask, cv2, pypdf, anthropic" >nul 2>nul
+rem เช็คตัวที่ต้องใช้จริง — anthropic คือตัวที่ใช้อ่านลายมือกับตรวจข้อบรรยาย
+rem ส่วน pillow_heif ใช้แปลงรูป .heic ของ iPhone (ใส่ไว้ด้วยเพื่อให้เครื่องที่ติดตั้ง
+rem ไปแล้วก่อนหน้านี้ได้ของใหม่โดยไม่ต้องพิมพ์คำสั่งเอง)
+%PYEXE% -c "import flask, cv2, pypdf, anthropic, pillow_heif, qrcode" >nul 2>nul
 if errorlevel 1 (
     echo.
     echo   ครั้งแรกในเครื่องนี้ ต้องติดตั้งไลบรารีก่อน รอสัก 2-3 นาที...

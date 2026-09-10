@@ -13,6 +13,7 @@ HTTP request <-> การเรียก pipeline เดิม ไม่มี�
 
 from __future__ import annotations
 
+import contextlib
 import hmac
 import json
 import os
@@ -26,6 +27,7 @@ from flask import Flask, jsonify, redirect, render_template, request, session, u
 
 from grading.align import imread_unicode
 from grading.config_loader import ExamConfig, load_config
+from grading.heic import HEIC_SUFFIXES, HeicError, convert_to_jpeg, heic_supported, is_heic
 from grading.llm_grader import MockSemanticGrader
 from grading.ocr import MockOcrProvider, OcrResult
 from grading.pdf_pages import PdfExtractError, extract_scanned_pages
@@ -42,9 +44,13 @@ from grading.settings import AppSettings, load_settings
 
 PROJECT_ROOT = Path(__file__).resolve().parent.parent
 
-# นามสกุลที่ opencv อ่านได้จริง — .heic ของ iPhone อ่านไม่ได้ ต้องแปลงก่อน
-# ตัดออกตั้งแต่ต้นทางดีกว่าปล่อยให้ไปตายตอน cv2.imread คืน None แบบไม่บอกสาเหตุ
+# นามสกุลที่ opencv อ่านได้จริง — ตัดชนิดอื่นออกตั้งแต่ต้นทาง ดีกว่าปล่อยให้ไปตายตอน
+# cv2.imread คืน None แบบไม่บอกสาเหตุ
 ALLOWED_IMAGE_SUFFIXES = {".jpg", ".jpeg", ".png", ".bmp", ".webp", ".tif", ".tiff"}
+
+# .heic ของ iPhone opencv อ่านไม่ได้ แต่รับไว้แล้วแปลงเป็น .jpg ให้เองก่อนส่งเข้า
+# ขั้นตอนตรวจ (ดู grading/heic.py) — ครูจะได้ไม่ต้องนั่งแปลงไฟล์เองทีละใบ
+UPLOADABLE_IMAGE_SUFFIXES = ALLOWED_IMAGE_SUFFIXES | set(HEIC_SUFFIXES)
 
 # เครื่องสแกนและแอปสแกนบนมือถือคายไฟล์ออกมาเป็น PDF ไฟล์เดียวจบทั้ง 2 หน้า
 # ครูจึงอัปโหลดของที่สแกนมาได้เลย ไม่ต้องไปหาโปรแกรมแปลงเป็นรูปก่อน
@@ -76,17 +82,42 @@ class GradingError(Exception):
 
 
 def _save_upload(file_storage, page_number: int, work_dir: str) -> str:
-    """เขียนรูปที่อัปโหลดลงโฟลเดอร์งาน แล้วคืน path — ไม่เชื่อชื่อไฟล์ที่เบราว์เซอร์ส่งมา"""
+    """เขียนรูปที่อัปโหลดลงโฟลเดอร์งาน แล้วคืน path — ไม่เชื่อชื่อไฟล์ที่เบราว์เซอร์ส่งมา
+
+    .heic ของ iPhone ถูกแปลงเป็น .jpg ให้ตรงนี้เลย ขั้นตอนที่เหลือจึงเห็นแต่ไฟล์ที่
+    opencv อ่านได้ ไม่ต้องรู้เรื่อง heic เลยสักที่เดียว
+    """
     suffix = Path(file_storage.filename or "").suffix.lower()
-    if suffix not in ALLOWED_IMAGE_SUFFIXES:
-        allowed = " ".join(sorted(ALLOWED_IMAGE_SUFFIXES))
+    if suffix not in UPLOADABLE_IMAGE_SUFFIXES:
+        allowed = " ".join(sorted(UPLOADABLE_IMAGE_SUFFIXES))
         shown = suffix or "ไม่ทราบชนิด"
         raise GradingError(
             f"หน้า {page_number}: ไฟล์ชนิด {shown} ใช้ไม่ได้ รองรับเฉพาะ {allowed} "
-            "— ถ้าเป็นรูปจาก iPhone (.heic) ให้แปลงเป็น .jpg ก่อน "
-            "ถ้าเป็นไฟล์ที่สแกนมาเป็น .pdf ให้ใช้ช่องอัปโหลด PDF แทน"
+            "— ถ้าเป็นไฟล์ที่สแกนมาเป็น .pdf ให้ใช้ช่องอัปโหลด PDF แทน"
         )
-    return _write_temp_upload(file_storage, work_dir, prefix=f"page{page_number}_", suffix=suffix)
+
+    if is_heic(suffix) and not heic_supported():
+        raise GradingError(
+            f"หน้า {page_number}: รูปจาก iPhone (.heic) ยังใช้ไม่ได้บนเครื่องนี้ "
+            "— แก้ได้ 2 ทาง (1) ปิดหน้าต่างสีดำ เปิด PowerShell ที่โฟลเดอร์โปรแกรม "
+            "แล้วพิมพ์ pip install -r requirements.txt (2) หรือตั้งกล้อง iPhone เป็น "
+            "Most Compatible ที่ ตั้งค่า > กล้อง > รูปแบบ แล้วถ่ายใหม่"
+        )
+
+    saved = _write_temp_upload(file_storage, work_dir, prefix=f"page{page_number}_", suffix=suffix)
+    if not is_heic(suffix):
+        return saved
+
+    jpeg_path = str(Path(saved).with_suffix(".jpg"))
+    try:
+        convert_to_jpeg(saved, jpeg_path)
+    except HeicError as exc:
+        raise GradingError(f"หน้า {page_number}: {exc}") from exc
+    finally:
+        # ต้นฉบับ .heic มีลายมือนักเรียนอยู่ ห้ามค้างใน temp ไม่ว่าแปลงสำเร็จหรือไม่
+        with contextlib.suppress(OSError):
+            os.remove(saved)
+    return jpeg_path
 
 
 def _save_pdf_upload(file_storage, work_dir: str) -> str:
