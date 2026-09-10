@@ -19,10 +19,14 @@
       "scoring_method": "string_similarity",
       "max_score": 1,
       "acceptable_answers": [
+        "นัต",
         "นัต / จุดเริ่มต้นของสาย",
-        "หัวกีตาร์ ตำแหน่งเริ่มสาย"
+        "หัวกีตาร์ ตำแหน่งเริ่มสาย",
+        "the nut",
+        "the nut, where the strings start",
+        "the nut at the top of the fretboard"
       ],
-      "answer_note": "ตัวอย่างคำตอบ ครูควรตรวจสอบ/แก้ไขให้ตรงกับที่สอนจริง",
+      "answer_note": "ข้อสอบแจกทั้งฉบับไทยและอังกฤษ เฉลยจึงมีทั้งสองภาษา — ใส่รูปแบบสั้น/ยาวไว้หลายแบบ เพราะ best_match_percent เลือกค่าที่ใกล้ที่สุดให้เอง",
       "score_tiers": [
         {
           "min_similarity_percent": 85,
@@ -47,7 +51,12 @@
       "scoring_method": "string_similarity",
       "max_score": 1,
       "acceptable_answers": [
-        "ดีดสายเปล่า / สายเปิด (ไม่ต้องกด)"
+        "ดีดสายเปล่า",
+        "สายเปิด",
+        "ดีดสายเปล่า / สายเปิด (ไม่ต้องกด)",
+        "open string",
+        "play the open string",
+        "play the open string, do not press any fret"
       ],
       "score_tiers": [
         {
@@ -73,7 +82,12 @@
       "scoring_method": "string_similarity",
       "max_score": 1,
       "acceptable_answers": [
-        "ไม่ดีดสายนั้น / ห้ามเล่นสายนั้น"
+        "ไม่ดีดสายนั้น",
+        "ห้ามเล่นสายนั้น",
+        "ไม่ดีดสายนั้น / ห้ามเล่นสายนั้น",
+        "do not play that string",
+        "don't play this string",
+        "mute that string, do not strum it"
       ],
       "score_tiers": [
         {
@@ -99,9 +113,11 @@
       "scoring_method": "string_similarity",
       "max_score": 1,
       "acceptable_answers": [
-        "นิ้วนาง กดสาย A ที่ช่องเฟร็ต 3"
+        "นิ้วนาง กดสาย A ที่ช่องเฟร็ต 3",
+        "ring finger, A string, fret 3",
+        "the ring finger presses the A string at the 3rd fret",
+        "press the A string at fret 3 with the ring finger"
       ],
-      "answer_note": "ตัวอย่างอิงจากภาพคอร์ดในข้อสอบ ครูต้องตรวจสอบให้ตรงกับคอร์ดที่ใช้จริง เพราะมี 3 องค์ประกอบต้องถูกครบ (นิ้ว/สาย/เฟร็ต)",
       "score_tiers": [
         {
           "min_similarity_percent": 80,
@@ -126,9 +142,11 @@
       "scoring_method": "string_similarity",
       "max_score": 1,
       "acceptable_answers": [
-        "สาย G, C, E"
+        "สาย G, C, E",
+        "G, C, E",
+        "the G, C and E strings",
+        "strings G, C and E are played open"
       ],
-      "answer_note": "ตัวอย่างอิงจากภาพคอร์ด ครูควรตรวจสอบให้ตรงกับรูปจริง",
       "score_tiers": [
         {
           "min_similarity_percent": 85,
@@ -150,11 +168,14 @@
       "question_group": "2",
       "label": "เวลาเล่นคอร์ดนี้ ต้องดีดทั้งหมดกี่สาย",
       "type": "numeric",
-      "scoring_method": "exact_match",
+      "scoring_method": "keyword_match",
       "max_score": 1,
       "acceptable_answers": [
         "4",
-        "4 สาย"
+        "4 สาย",
+        "4 strings",
+        "four",
+        "four strings"
       ],
       "score_tiers": [
         {
@@ -166,7 +187,8 @@
           "score": 0.0,
           "flag_for_review": true
         }
-      ]
+      ],
+      "answer_note": "เปลี่ยนจาก exact_match เป็น keyword_match: เด็กที่เขียนเป็นประโยค เช่น \"You strum all 4 strings\" ตอบถูกแต่ exact_match ให้ 0 เพราะไม่ตรงเป๊ะ · keyword_match นับเป็น \"คำ\" จึงเจอเลข 4 ในประโยค ส่วนคำตอบผิด (3) ยังได้ 0 เหมือนเดิม"
     },
     {
       "question_id": "3",
@@ -176,9 +198,11 @@
       "scoring_method": "string_similarity",
       "max_score": 2,
       "acceptable_answers": [
-        "ดีดสาย G เปิด แล้วสาย C เปิด แล้วสาย E เปิด แล้วสาย A เปิด ตามลำดับ"
+        "ดีดสาย G เปิด แล้วสาย C เปิด แล้วสาย E เปิด แล้วสาย A เปิด ตามลำดับ",
+        "G เปิด, C เปิด, E เปิด, A เปิด",
+        "pluck the open G string, then open C, then open E, then open A, in that order",
+        "open G, open C, open E, open A"
       ],
-      "answer_note": "ตัวอย่างอิงจากตำแหน่ง 0 ในแท็บ ครูต้องตรวจสอบลำดับให้ตรงกับแท็บจริง การตรวจเน้นลำดับ (sequence) ไม่ใช่แค่คำที่ตรงกัน",
       "score_tiers": [
         {
           "min_similarity_percent": 85,
@@ -202,8 +226,8 @@
       "type": "descriptive",
       "scoring_method": "llm_semantic",
       "max_score": 3,
-      "reference_answer": "Strumming คือการดีดสายพร้อมกันหลายสายเป็นจังหวะ ส่วน Picking คือการดีดทีละสายด้วยนิ้วตามรูปแบบที่กำหนด",
-      "llm_grading_instructions": "พิจารณาความหมายเป็นหลัก ไม่ใช่คำที่ตรงตัวเป๊ะ ยอมรับการสะกดผิดเล็กน้อยจาก OCR ให้คะแนนตามความครบถ้วนของแนวคิด 2 ข้อ: (1) Strumming = ดีดพร้อมกันหลายสาย (2) Picking = ดีดทีละสาย",
+      "reference_answer": "Strumming คือการดีดสายพร้อมกันหลายสายเป็นจังหวะ ส่วน Picking คือการดีดทีละสายด้วยนิ้วตามรูปแบบที่กำหนด — English: Strumming means brushing several strings together in a rhythm, while Picking means plucking one string at a time with separate fingers.",
+      "llm_grading_instructions": "พิจารณาความหมายเป็นหลัก ไม่ใช่คำที่ตรงตัวเป๊ะ ยอมรับการสะกดผิดเล็กน้อยจาก OCR ให้คะแนนตามความครบถ้วนของแนวคิด 2 ข้อ: (1) Strumming = ดีดพร้อมกันหลายสาย (2) Picking = ดีดทีละสาย · ข้อสอบแจกทั้งฉบับไทยและอังกฤษ ตอบภาษาใดก็ได้คะแนนเท่ากัน ห้ามหักเพราะตอบคนละภาษากับเฉลย",
       "score_tiers": [
         {
           "min_similarity_percent": 90,
@@ -233,12 +257,14 @@
       "question_group": "5",
       "label": "นิ้วหัวแม่มือ (P) รับผิดชอบสายใด",
       "type": "short_answer",
-      "scoring_method": "exact_match",
+      "scoring_method": "keyword_match",
       "max_score": 1,
       "acceptable_answers": [
-        "สาย G"
+        "G",
+        "สาย G",
+        "string G"
       ],
-      "answer_note": "ตามหลักการเล่น Picking มาตรฐาน 1 นิ้วต่อ 1 สาย ครูตรวจสอบให้ตรงกับที่สอน",
+      "answer_note": "เปลี่ยนจาก exact_match เป็น keyword_match: เด็กเขียนเป็นประโยคบ่อย เช่น \"for playing string G\" ซึ่งถูก แต่ exact_match ให้ 0 · ยังแยกคำตอบผิดได้ เพราะเทียบเป็นคำ ไม่ใช่ตัวอักษร — \"string C\" ไม่มีคำว่า g",
       "score_tiers": [
         {
           "min_similarity_percent": 100,
@@ -256,10 +282,12 @@
       "question_group": "5",
       "label": "นิ้วชี้ (I) รับผิดชอบสายใด",
       "type": "short_answer",
-      "scoring_method": "exact_match",
+      "scoring_method": "keyword_match",
       "max_score": 1,
       "acceptable_answers": [
-        "สาย C"
+        "C",
+        "สาย C",
+        "string C"
       ],
       "score_tiers": [
         {
@@ -278,10 +306,12 @@
       "question_group": "5",
       "label": "นิ้วกลาง (M) รับผิดชอบสายใด",
       "type": "short_answer",
-      "scoring_method": "exact_match",
+      "scoring_method": "keyword_match",
       "max_score": 1,
       "acceptable_answers": [
-        "สาย E"
+        "E",
+        "สาย E",
+        "string E"
       ],
       "score_tiers": [
         {
@@ -300,10 +330,12 @@
       "question_group": "5",
       "label": "นิ้วนาง (A) รับผิดชอบสายใด",
       "type": "short_answer",
-      "scoring_method": "exact_match",
+      "scoring_method": "keyword_match",
       "max_score": 1,
       "acceptable_answers": [
-        "สาย A"
+        "A",
+        "สาย A",
+        "string A"
       ],
       "score_tiers": [
         {
@@ -315,7 +347,9 @@
           "score": 0.0,
           "flag_for_review": true
         }
-      ]
+      ],
+      "answer_note": "ข้อนี้ต้องระวัง: เฉลยคือตัวอักษร A ซึ่งชนกับคำนำหน้านาม \"a\" ในภาษาอังกฤษพอดี คำตอบที่มีคำว่า a ลอย ๆ (เช่น \"it is a string\") จะได้ 100 ทั้งที่ไม่ได้ตอบ A · เจอเมื่อไหร่ให้แก้ที่เฉลยข้อนี้ ไม่ใช่ที่โค้ด"
     }
-  ]
+  ],
+  "_อ่านก่อน": "ข้อสอบชุดนี้แจกทั้งฉบับภาษาไทยและภาษาอังกฤษ acceptable_answers จึงใส่ไว้ทั้งสองภาษา เวลาเพิ่มข้อใหม่ให้ใส่ทั้งสองภาษาเสมอ ไม่งั้นเด็กที่ทำฉบับอังกฤษจะได้คะแนนต่ำผิดปกติ ตอนที่ระบบถอยไปวัดความใกล้เคียงแบบเทียบตัวอักษร (เกิดเมื่อเรียก Claude ไม่สำเร็จ)"
 }
