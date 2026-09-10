@@ -21,3 +21,8 @@ anthropic>=0.40.0
 
 # ของ Google (Sheets / Vision) ไม่อยู่ในไฟล์นี้ ไม่ต้องติดตั้งก็ตรวจข้อสอบได้ครบ
 # ถ้าจะบันทึกลง Google Sheets แทน CSV: pip install -r requirements-google.txt
+
+# QR code ในหน้าต่างดำ ตอนเปิดโหมดมือถือ — ครูสแกนแทนการพิมพ์ IP เอง
+# pure-python ไม่ต้องลงไบนารีอะไรเพิ่ม และถ้าไม่มีตัวนี้โปรแกรมก็ยังเปิดได้ปกติ
+# แค่ต้องพิมพ์ URL เอง (ดู print_qr_code() ใน web_app.py)
+qrcode>=7.4

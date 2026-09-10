@@ -1,8 +1,11 @@
 """
 เว็บแอปตรวจข้อสอบ — หน้าเดียวจบ: อัปรูป 2 หน้า -> กดตรวจ -> แก้คะแนนที่ต้องดูซ้ำ -> บันทึก
 
-ออกแบบให้รันในเครื่องครูเอง (127.0.0.1) ไม่ใช่เซิร์ฟเวอร์สาธารณะ:
-ภาพกระดาษคำตอบมีชื่อและลายมือนักเรียน จึงไม่ควรออกจากเครื่องไปไหนทั้งสิ้น
+ออกแบบให้รันในเครื่องครูเอง ไม่ใช่เซิร์ฟเวอร์สาธารณะ: ภาพกระดาษคำตอบมีชื่อและ
+ลายมือนักเรียน จึงไม่ควรออกจากเครื่องไปไหนทั้งสิ้น ค่าเริ่มต้นจึงผูกกับ 127.0.0.1
+
+ถ้าจะเปิดให้มือถือเข้าได้ ต้องตั้ง access_code ใน settings.json ก่อน แล้ว web_app.py
+จะยอมผูกกับ 0.0.0.0 ให้ — ด่านรหัสผ่านอยู่ใน require_access_code() ข้างล่างนี้
 
 logic การตรวจทั้งหมดยังเป็นชุดเดิมใน grading/ ไฟล์นี้เป็นแค่ชั้นเปลือกที่แปลง
 HTTP request <-> การเรียก pipeline เดิม ไม่มีสูตรคิดคะแนนซ้ำซ้อนอยู่ในนี้เลย
@@ -10,14 +13,16 @@ HTTP request <-> การเรียก pipeline เดิม ไม่มี�
 
 from __future__ import annotations
 
+import hmac
 import json
 import os
+import secrets
 import shutil
 import tempfile
 import time
 from pathlib import Path
 
-from flask import Flask, jsonify, render_template, request
+from flask import Flask, jsonify, redirect, render_template, request, session, url_for
 
 from grading.align import imread_unicode
 from grading.config_loader import ExamConfig, load_config
@@ -223,6 +228,12 @@ def create_app(settings: AppSettings | None = None) -> Flask:
     app.config["STARTED_AT"] = time.time()
     app.config["SOURCE_MTIME_AT_START"] = newest_source_mtime()
 
+    # สุ่มใหม่ทุกครั้งที่เปิดโปรแกรม — ตั้งใจให้ปิดแล้วเปิดใหม่ = ทุกเครื่องต้องกรอก
+    # รหัสอีกรอบ ครูจะได้ไม่ทิ้งมือถือที่ล็อกอินค้างไว้แล้วลืม
+    app.secret_key = secrets.token_hex(32)
+    app.config["SESSION_COOKIE_SAMESITE"] = "Lax"
+    app.config["SESSION_COOKIE_HTTPONLY"] = True
+
     def current_settings() -> AppSettings:
         return app.config["SETTINGS"]
 
@@ -255,6 +266,51 @@ def create_app(settings: AppSettings | None = None) -> Flask:
         response.headers["Cache-Control"] = "no-store, must-revalidate"
         response.headers["Pragma"] = "no-cache"
         return response
+
+    # ---------------- ด่านรหัสผ่าน ----------------
+    # เปิดใช้เฉพาะเมื่อ settings.json ตั้ง access_code ไว้ ถ้าไม่ตั้งก็ผ่านหมดเหมือนเดิม
+    # (กรณีเปิดจากเครื่องตัวเองอย่างเดียว ซึ่งเป็นค่าเริ่มต้น) แต่ถ้าจะเปิดให้มือถือเข้า
+    # web_app.py จะไม่ยอมเปิดเซิร์ฟเวอร์เลยถ้ายังไม่ตั้งรหัส
+    OPEN_ENDPOINTS = frozenset({"login", "static"})
+
+    @app.before_request
+    def require_access_code() -> object | None:
+        if not current_settings().access_code_ready:
+            return None
+        if session.get("unlocked") is True:
+            return None
+        if request.endpoint in OPEN_ENDPOINTS:
+            return None
+        if request.path.startswith("/api/"):
+            # ฝั่ง JS ต้องแยกออกว่า "หมดเวลา ต้องล็อกอินใหม่" ไม่ใช่ "ตรวจไม่ผ่าน"
+            return jsonify({"error": "หมดเวลาใช้งาน — ต้องกรอกรหัสผ่านใหม่", "locked": True}), 401
+        return redirect(url_for("login"))
+
+    @app.route("/login", methods=["GET", "POST"])
+    def login():
+        settings_obj = current_settings()
+        if not settings_obj.access_code_ready:
+            return redirect(url_for("index"))
+        if session.get("unlocked") is True:
+            return redirect(url_for("index"))
+
+        error = ""
+        if request.method == "POST":
+            typed = (request.form.get("access_code") or "").strip()
+            # compare_digest กัน timing attack — ของเล็กน้อยแต่ไม่มีเหตุผลที่จะไม่ทำ
+            # ต้องแปลงเป็น bytes ก่อน เพราะเวอร์ชันที่รับ str ใช้ได้เฉพาะ ASCII
+            # ครูตั้งรหัสเป็นภาษาไทยได้ ถ้าส่ง str ตรง ๆ จะ TypeError ทุกครั้งที่กรอก
+            if hmac.compare_digest(typed.encode("utf-8"), settings_obj.access_code.encode("utf-8")):
+                session["unlocked"] = True
+                session.permanent = False
+                return redirect(url_for("index"))
+            error = "รหัสผ่านไม่ถูกต้อง"
+        return render_template("login.html", error=error), (401 if error else 200)
+
+    @app.route("/logout", methods=["POST"])
+    def logout():
+        session.clear()
+        return redirect(url_for("login"))
 
     @app.route("/")
     def index():

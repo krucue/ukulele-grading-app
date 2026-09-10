@@ -441,5 +441,103 @@ with tempfile.TemporaryDirectory() as tmpdir:
     check("บอกว่าข้อไหนพัง", first_q.question_id in res.get_json()["error"])
 
 
+# ---------------------------------------------------------------------------
+# ด่านรหัสผ่าน — ใช้ตอนเปิดให้มือถือเข้า (web_app.py --มือถือ)
+#
+# หน้าเว็บนี้มีชื่อและลายมือนักเรียน ทันทีที่ผูกกับ 0.0.0.0 ใครที่ต่อ Wi-Fi
+# วงเดียวกันก็ยิง /api/grade กับ /api/save ได้ตรง ๆ ถ้าด่านนี้กันแต่หน้า HTML
+# แต่ปล่อย /api/ ผ่าน เท่ากับไม่ได้กันอะไรเลย เทสนี้จึงยิงทั้งสองทาง
+# ---------------------------------------------------------------------------
+print("\nด่านรหัสผ่านหน้าเว็บ (access_code)")
+
+with tempfile.TemporaryDirectory() as tmpdir:
+    locked_settings = AppSettings(
+        csv_path=str(Path(tmpdir) / "ผลตรวจ.csv"),
+        ocr_provider="api",
+        access_code="รหัสลับ123",
+    )
+    locked_app = create_app(locked_settings)
+    locked = locked_app.test_client()
+
+    res = locked.get("/", follow_redirects=False)
+    check("ยังไม่ล็อกอิน -> หน้าแรกเด้งไปหน้ากรอกรหัส", res.status_code == 302)
+    check("เด้งไปที่ /login จริง", "/login" in res.headers.get("Location", ""))
+
+    res = locked.get("/api/status")
+    check("ยังไม่ล็อกอิน -> /api/status ถูกปฏิเสธ ไม่ใช่ปล่อยผ่าน", res.status_code == 401)
+    check("บอกฝั่ง JS ว่าติดล็อก ไม่ใช่ตรวจไม่ผ่าน", res.get_json().get("locked") is True)
+
+    # ทางที่อันตรายที่สุด — ยิงตรงเข้า /api/save โดยไม่ผ่านหน้าเว็บเลย
+    res = locked.post("/api/save", json={"student": {"name": "คนนอก"}, "results": []})
+    check("ยังไม่ล็อกอิน -> /api/save ถูกปฏิเสธ", res.status_code == 401)
+
+    res = locked.get("/login")
+    check("หน้ากรอกรหัสเปิดได้โดยไม่ต้องล็อกอิน", res.status_code == 200)
+
+    res = locked.post("/login", data={"access_code": "รหัสผิด"})
+    check("กรอกรหัสผิด -> ไม่ผ่าน", res.status_code == 401)
+    check("บอกว่ารหัสผิด", "รหัสผ่านไม่ถูกต้อง" in res.get_data(as_text=True))
+
+    res = locked.get("/api/status")
+    check("กรอกผิดแล้วยังเข้าไม่ได้", res.status_code == 401)
+
+    res = locked.post("/login", data={"access_code": "รหัสลับ123"}, follow_redirects=False)
+    check("กรอกรหัสถูก -> เด้งเข้าหน้าแรก", res.status_code == 302)
+
+    res = locked.get("/api/status")
+    check("ล็อกอินแล้วใช้งานได้ตามปกติ", res.status_code == 200)
+
+    res = locked.get("/")
+    check("ล็อกอินแล้วเปิดหน้าแรกได้", res.status_code == 200)
+
+    locked.post("/logout")
+    res = locked.get("/api/status")
+    check("กดออกจากระบบแล้วกลับไปถูกล็อก", res.status_code == 401)
+
+# ไม่ตั้งรหัส = ต้องใช้งานได้เหมือนเดิมทุกอย่าง (กรณีเปิดจากเครื่องตัวเองอย่างเดียว
+# ซึ่งเป็นค่าเริ่มต้น) ด่านนี้ต้องไม่ไปขวางครูที่ไม่ได้จะใช้มือถือ
+with tempfile.TemporaryDirectory() as tmpdir:
+    open_app = create_app(
+        AppSettings(csv_path=str(Path(tmpdir) / "ผลตรวจ.csv"), ocr_provider="api")
+    )
+    open_client = open_app.test_client()
+    check("ไม่ตั้ง access_code -> เปิดหน้าแรกได้เลย", open_client.get("/").status_code == 200)
+    check("ไม่ตั้ง access_code -> /api/status ใช้ได้เลย", open_client.get("/api/status").status_code == 200)
+
+# รหัสสั้นเกินไปต้องถูกปัดทิ้ง ไม่ใช่รับไว้แล้วปล่อยให้ครูเข้าใจว่ากั้นอยู่แล้ว
+with tempfile.TemporaryDirectory() as tmpdir:
+    short_file = Path(tmpdir) / "settings.json"
+    short_file.write_text(json.dumps({"access_code": "123"}), encoding="utf-8")
+    short_code = load_settings(short_file)
+    check("รหัสสั้นกว่า 6 ตัวถูกปัดทิ้ง", short_code.access_code == "")
+    check("และบอกครูว่าทำไม", any("access_code" in p for p in short_code.problems))
+
+    long_file = Path(tmpdir) / "settings-ยาวพอ.json"
+    long_file.write_text(
+        json.dumps({"access_code": "รหัสยาวพอ"}, ensure_ascii=False), encoding="utf-8"
+    )
+    check("รหัสยาวพอถูกรับไว้", load_settings(long_file).access_code_ready)
+
+# ---------------------------------------------------------------------------
+# ตัวกันใน web_app.py — เปิดให้เครื่องอื่นเข้าได้ต้องมีรหัสเสมอ
+# ---------------------------------------------------------------------------
+print("\nตัวกันตอนเปิดโหมดมือถือ")
+
+check("มี flag --มือถือ ให้ .bat เรียก", "--มือถือ" in Path(web_app.__file__).read_text(encoding="utf-8"))
+check("มีตัวปฏิเสธตอนไม่มีรหัส", callable(web_app.refuse_open_without_code))
+check("บอก IP วงแลนให้ครูได้", callable(web_app.lan_ip_address))
+check("แยก IP ของ Tailscale ออกมาได้", callable(web_app.tailscale_ip_address))
+# 0.0.0.0 ไม่ใช่ปลายทางที่ต่อได้จริง ถ้าเอาไปเปิดเบราว์เซอร์ตรง ๆ จะเจอ "ต่อไม่ได้"
+check("แปลง 0.0.0.0 กลับเป็น 127.0.0.1 ก่อนเปิดเบราว์เซอร์", web_app.reachable_host(web_app.BIND_ALL) == "127.0.0.1")
+check("host ปกติไม่ถูกแปลง", web_app.reachable_host("192.168.1.5") == "192.168.1.5")
+
+phone_bat = PROJECT_ROOT / "เปิดโปรแกรม (ใช้กับมือถือได้).bat"
+check("มี .bat สำหรับเปิดโหมดมือถือให้ครูดับเบิลคลิก", phone_bat.exists())
+if phone_bat.exists():
+    bat_text = phone_bat.read_text(encoding="utf-8")
+    check("ไฟล์ .bat เรียก web_app.py ด้วย --มือถือ", "--มือถือ" in bat_text)
+    check("เตือนเรื่อง firewall ของ Windows ไว้ด้วย", "Allow" in bat_text)
+
+
 print(f"\nผ่าน {passed} ตก {failed}")
 sys.exit(1 if failed else 0)

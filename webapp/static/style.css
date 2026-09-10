@@ -197,3 +197,84 @@ input.score-input.edited { border-color: var(--ochre); background: #FFFBF4; }
   margin-bottom: 4px;
   font-size: 1.05em;
 }
+
+/* ---------------- หน้ากรอกรหัสผ่าน ----------------
+   ใช้ตอนเปิดให้มือถือเข้าได้ (web_app.py --host 0.0.0.0) จอที่เจอหน้านี้บ่อยที่สุด
+   คือมือถือ จึงจัดกึ่งกลางและทำปุ่มให้สูงพอสำหรับนิ้ว ไม่ใช่เมาส์ */
+.login-body {
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  min-height: 100vh;
+  padding: 20px;
+}
+
+.login-card {
+  width: 100%;
+  max-width: 380px;
+  padding: 28px 24px 22px;
+  border: 1px solid var(--border);
+  border-radius: 12px;
+  background: var(--card);
+}
+
+.login-card h1 {
+  margin: 0 0 6px;
+  font-size: 20px;
+  color: var(--ink);
+}
+
+.login-hint {
+  margin: 0 0 20px;
+  font-size: 14px;
+  line-height: 1.6;
+  color: var(--muted);
+}
+
+.login-error {
+  margin: 0 0 16px;
+  padding: 10px 12px;
+  border: 1px solid #E8B4AE;
+  border-radius: 8px;
+  background: #FDECEA;
+  color: var(--error);
+  font-size: 14px;
+}
+
+.login-label {
+  display: block;
+  margin-bottom: 6px;
+  font-size: 14px;
+  font-weight: 600;
+  color: var(--ink-dark);
+}
+
+.login-card input[type="password"] {
+  width: 100%;
+  /* 16px ขึ้นไปเท่านั้น — Safari บน iOS ซูมหน้าจอเข้าไปเองถ้าตัวอักษรเล็กกว่านี้ */
+  font-size: 16px;
+  padding: 12px;
+  border: 1px solid var(--border);
+  border-radius: 8px;
+  background: var(--paper);
+}
+
+.login-card button {
+  width: 100%;
+  margin-top: 14px;
+  padding: 14px;
+  border: 0;
+  border-radius: 8px;
+  background: var(--ink);
+  color: #fff;
+  font-size: 16px;
+  font-weight: 600;
+  cursor: pointer;
+}
+
+.login-note {
+  margin: 18px 0 0;
+  font-size: 12.5px;
+  line-height: 1.6;
+  color: var(--muted);
+}

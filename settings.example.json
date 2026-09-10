@@ -15,6 +15,9 @@
   "_google_credentials_path": "ไม่ต้องใส่ก็ตรวจข้อสอบได้ — ใช้เฉพาะตอนตั้ง sheet.mode = google เท่านั้น (path เต็มของ service account json ที่เปิดสิทธิ์ Google Sheets)",
   "google_credentials_path": "",
 
+  "_access_code": "รหัสผ่านหน้าเว็บ · เว้นว่างได้ถ้าเปิดใช้จากเครื่องนี้เครื่องเดียว · แต่ถ้าจะเปิดให้มือถือเข้า (ดับเบิลคลิก 'เปิดโปรแกรม (ใช้กับมือถือได้).bat') ต้องตั้งไว้ ยาวอย่างน้อย 6 ตัว ไม่งั้นโปรแกรมไม่ยอมเปิด",
+  "access_code": "",
+
   "sheet": {
     "_mode": "csv = บันทึกลงไฟล์ในเครื่อง (ไม่ต้องตั้งอะไรเลย) · google = บันทึกลง Google Sheets (ต้องมี google_credentials_path)",
     "mode": "csv",

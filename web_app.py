@@ -4,9 +4,14 @@
     python web_app.py                # เปิดเซิร์ฟเวอร์แล้วเด้งเบราว์เซอร์ให้เอง
     python web_app.py --port 8080    # ถ้าพอร์ตเดิมชนกับโปรแกรมอื่น
     python web_app.py --no-browser   # ไม่ต้องเปิดเบราว์เซอร์ให้
+    python web_app.py --มือถือ        # เปิดให้มือถือ/เครื่องอื่นเข้าได้ (ต้องตั้ง access_code ก่อน)
 
-ผูกกับ 127.0.0.1 เท่านั้น = เข้าถึงได้จากเครื่องนี้เครื่องเดียว เครื่องอื่นในวงแลน
-เปิดไม่ได้ ตั้งใจให้เป็นแบบนี้ เพราะรูปกระดาษคำตอบมีชื่อและลายมือนักเรียนอยู่
+ค่าเริ่มต้นผูกกับ 127.0.0.1 = เข้าถึงได้จากเครื่องนี้เครื่องเดียว เครื่องอื่นเปิดไม่ได้
+ตั้งใจให้เป็นแบบนี้ เพราะรูปกระดาษคำตอบมีชื่อและลายมือนักเรียนอยู่
+
+--มือถือ เปลี่ยนไปผูกกับ 0.0.0.0 เพื่อให้มือถือในวงเดียวกัน (หรือผ่าน Tailscale)
+เข้าได้ และ **จะไม่ยอมเปิดถ้ายังไม่ได้ตั้ง access_code ใน settings.json** เพราะ
+เปิดพอร์ตทิ้งไว้โดยไม่มีรหัส = ใครต่อวงเดียวกันได้ก็เปิดดูคะแนนนักเรียนได้หมด
 """
 
 from __future__ import annotations
@@ -52,12 +57,136 @@ def anthropic_installed() -> bool:
     return importlib.util.find_spec("anthropic") is not None
 
 
+# 0.0.0.0 = "ทุก network interface" ไม่ใช่ปลายทางที่ต่อได้จริง เวลาเช็คพอร์ตหรือ
+# เปิดเบราว์เซอร์ต้องแปลงกลับเป็น 127.0.0.1 ก่อน
+BIND_ALL = "0.0.0.0"  # noqa: S104 — ตั้งใจ ใช้เฉพาะตอน --มือถือ ซึ่งบังคับให้มี access_code
+
+
+def reachable_host(host: str) -> str:
+    return "127.0.0.1" if host == BIND_ALL else host
+
+
+def lan_ip_address() -> str | None:
+    """IP ของเครื่องนี้ในวงแลน — เอาไว้บอกครูว่าให้มือถือเปิดที่ไหน
+
+    ใช้วิธีเปิด UDP socket ไปหา 8.8.8.8 แล้วถามว่าระบบเลือกใช้ interface ไหน
+    (ไม่ได้ส่งอะไรออกไปจริง UDP ไม่มี handshake) แม่นกว่า gethostbyname ที่คืน
+    127.0.0.1 บ่อยบนเครื่องที่ตั้งค่า hosts ไว้แปลก ๆ
+    """
+    try:
+        with socket.socket(socket.AF_INET, socket.SOCK_DGRAM) as sock:
+            sock.settimeout(0.5)
+            sock.connect(("8.8.8.8", 80))
+            return sock.getsockname()[0]
+    except OSError:
+        return None
+
+
+def tailscale_ip_address() -> str | None:
+    """IP ของ Tailscale ถ้าติดตั้งไว้ — ช่วงที่ Tailscale ใช้คือ 100.64.0.0/10
+
+    มีไว้เพราะ IP ตัวนี้คือตัวที่ใช้ได้จากนอกโรงเรียน ต่างจาก IP วงแลนที่ใช้ได้
+    เฉพาะตอนอยู่ Wi-Fi เดียวกัน ครูจะได้ไม่หยิบผิดตัวแล้วงงว่าทำไมออกนอกบ้านแล้วเข้าไม่ได้
+    """
+    try:
+        for info in socket.getaddrinfo(socket.gethostname(), None, socket.AF_INET):
+            ip = info[4][0]
+            first, second = ip.split(".")[:2]
+            if first == "100" and 64 <= int(second) <= 127:
+                return ip
+    except (OSError, ValueError, IndexError):
+        pass
+    return None
+
+
+def print_qr_code(url: str) -> bool:
+    """พิมพ์ QR ของ URL ลงหน้าต่างดำ ให้ครูยกมือถือมาสแกนแทนการพิมพ์ IP เอง
+
+    คืน False ถ้ายังไม่ได้ติดตั้งไลบรารี qrcode — ไม่ใช่เรื่องคอขาดบาดตาย
+    แค่ต้องพิมพ์ URL เองเท่านั้น จึงไม่ทำให้โปรแกรมหยุด
+    """
+    try:
+        import qrcode
+    except ImportError:
+        return False
+    code = qrcode.QRCode(border=1)
+    code.add_data(url)
+    code.make(fit=True)
+    code.print_ascii(invert=True)
+    return True
+
+
 def build_arg_parser() -> argparse.ArgumentParser:
     parser = argparse.ArgumentParser(description="เปิดเว็บแอปตรวจข้อสอบอูคูเลเล่")
     parser.add_argument("--host", default="127.0.0.1", help="ค่าเริ่มต้น 127.0.0.1 (เครื่องนี้เท่านั้น)")
     parser.add_argument("--port", type=int, default=DEFAULT_PORT)
     parser.add_argument("--no-browser", action="store_true", help="ไม่ต้องเปิดเบราว์เซอร์ให้อัตโนมัติ")
+    parser.add_argument(
+        "--มือถือ",
+        "--phone",
+        dest="phone",
+        action="store_true",
+        help="เปิดให้มือถือ/เครื่องอื่นเข้าได้ — ต้องตั้ง access_code ใน settings.json ก่อน",
+    )
     return parser
+
+
+def print_phone_access(port: int) -> None:
+    """บอกครูว่าให้มือถือเปิดที่ URL ไหน พร้อม QR ให้สแกนแทนการพิมพ์ IP เอง"""
+    tailscale_ip = tailscale_ip_address()
+    lan_ip = lan_ip_address()
+
+    print("  " + "-" * 66)
+    print("  เปิดให้มือถือใช้งานแล้ว — ต้องกรอกรหัสผ่านก่อนเข้าใช้ทุกเครื่อง")
+    print("  " + "-" * 66)
+    print()
+
+    # เรียง Tailscale ไว้ก่อนโดยตั้งใจ — เป็นตัวที่ใช้ได้ทุกที่ ส่วน IP วงแลนใช้ได้
+    # เฉพาะตอนอยู่ Wi-Fi เดียวกัน ถ้าไม่แยกให้ชัดครูจะหยิบผิดตัวแล้วงงตอนออกนอกบ้าน
+    best_url = None
+    if tailscale_ip:
+        best_url = f"http://{tailscale_ip}:{port}/"
+        print(f"  ใช้ได้ทุกที่ (Tailscale):   {best_url}")
+    if lan_ip:
+        lan_url = f"http://{lan_ip}:{port}/"
+        best_url = best_url or lan_url
+        print(f"  เฉพาะ Wi-Fi เดียวกัน:      {lan_url}")
+    if not tailscale_ip:
+        print()
+        print("  (ยังไม่ได้ติดตั้ง Tailscale — ตอนนี้ใช้ได้เฉพาะใน Wi-Fi เดียวกันเท่านั้น)")
+
+    if best_url:
+        print()
+        if print_qr_code(best_url):
+            print(f"  สแกน QR ข้างบนด้วยมือถือ หรือพิมพ์ {best_url} เอง")
+        else:
+            print(f"  พิมพ์ {best_url} ในเบราว์เซอร์บนมือถือ")
+            print("  (อยากได้ QR ให้สแกนแทนการพิมพ์ ติดตั้งด้วย: pip install qrcode)")
+    print()
+
+
+def refuse_open_without_code() -> None:
+    """เปิดพอร์ตให้เครื่องอื่นโดยไม่มีรหัส = ใครต่อวงเดียวกันได้ก็เปิดดูคะแนนได้หมด
+
+    เลือกหยุดโปรแกรมไปเลย ไม่ใช่แค่เตือนแล้วเปิดต่อ เพราะครูจะไม่ทันเห็นคำเตือน
+    ที่วิ่งผ่านไปในหน้าต่างดำ แล้วเปิดทิ้งไว้ทั้งวันโดยไม่รู้ตัว
+    """
+    print("=" * 70)
+    print("  ยังเปิดให้มือถือใช้ไม่ได้ — ต้องตั้งรหัสผ่านก่อน")
+    print("=" * 70)
+    print()
+    print("  หน้าเว็บนี้มีชื่อและลายมือนักเรียนอยู่ ถ้าเปิดให้เครื่องอื่นเข้าได้")
+    print("  โดยไม่มีรหัสผ่าน ใครที่ต่อ Wi-Fi วงเดียวกัน (รวมนักเรียน) ก็เปิดดูได้หมด")
+    print()
+    print("  วิธีแก้: เปิดไฟล์ settings.json แล้วเพิ่มบรรทัดนี้เข้าไป")
+    print()
+    print('      "access_code": "ตั้งรหัสของครูเองตรงนี้",')
+    print()
+    print("  ตั้งให้ยาวอย่างน้อย 6 ตัว แล้วเปิดโปรแกรมใหม่อีกครั้ง")
+    print()
+    with contextlib.suppress(EOFError, KeyboardInterrupt):
+        input("  กด Enter เพื่อปิดหน้าต่างนี้...")
+    sys.exit(1)
 
 
 def main() -> None:
@@ -76,22 +205,33 @@ def main() -> None:
             input("กด Enter เพื่อปิดหน้าต่างนี้...")
         sys.exit(1)
 
+    settings = load_settings()
+
+    host = BIND_ALL if args.phone else args.host
+    # ตัวกัน: เปิดให้เครื่องอื่นเข้าได้ต้องมีรหัสผ่านเสมอ ไม่มีข้อยกเว้น
+    if host != "127.0.0.1" and not settings.access_code_ready:
+        refuse_open_without_code()
+
+    probe_host = reachable_host(host)
     port = args.port
-    if not port_is_free(args.host, port):
-        found = find_free_port(args.host, port + 1)
+    if not port_is_free(probe_host, port):
+        found = find_free_port(probe_host, port + 1)
         if found is None:
             print(f"[หยุดทำงาน] พอร์ต {port} ถูกใช้อยู่ และหาพอร์ตว่างใกล้เคียงไม่เจอ", file=sys.stderr)
             sys.exit(1)
         print(f"[หมายเหตุ] พอร์ต {port} ถูกโปรแกรมอื่นใช้อยู่ เปลี่ยนไปใช้ {found} แทน")
         port = found
 
-    settings = load_settings()
-    url = f"http://{args.host}:{port}/"
+    url = f"http://{probe_host}:{port}/"
 
     print("=" * 70)
     print("  ระบบตรวจข้อสอบอูคูเลเล่ — เปิดใช้งานแล้ว")
     print("=" * 70)
     print(f"\n  เปิดเบราว์เซอร์ไปที่:  {url}\n")
+
+    if host == BIND_ALL:
+        print_phone_access(port)
+
     for line in settings.status_lines():
         print(f"  · {line}")
     if settings.problems:
@@ -125,7 +265,7 @@ def main() -> None:
     sys.stdout.flush()
 
     app = create_app(settings)
-    serve(app, args.host, port)
+    serve(app, host, port)
 
 
 def serve(app, host: str, port: int) -> None:

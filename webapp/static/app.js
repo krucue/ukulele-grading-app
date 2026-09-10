@@ -24,6 +24,19 @@ function hide(el) {
 let firstStatusLoad = true;
 let sawStaleServer = false;
 
+// เซิร์ฟเวอร์ตอบ 401 พร้อม locked:true = เซสชันหลุด ต้องกรอกรหัสผ่านใหม่
+// เกิดได้จริงเมื่อเปิดโปรแกรมใหม่ระหว่างที่ครูเปิดหน้าเว็บบนมือถือค้างไว้ (รหัสของ
+// เซสชันถูกสุ่มใหม่ทุกครั้งที่เปิด) ถ้าไม่ดักตรงนี้ ครูจะเห็นแค่ error งง ๆ ว่าตรวจไม่ผ่าน
+// ทั้งที่กระดาษไม่มีปัญหาอะไรเลย
+function handleLocked(data, errorBoxId) {
+  if (!data || data.locked !== true) return false;
+  show($(errorBoxId), "หมดเวลาใช้งานแล้ว — กำลังพาไปหน้ากรอกรหัสผ่านใหม่");
+  setTimeout(() => {
+    window.location.href = "/login";
+  }, 1200);
+  return true;
+}
+
 async function loadStatus() {
   let data;
   try {
@@ -33,6 +46,8 @@ async function loadStatus() {
     show($("formError"), "ติดต่อเซิร์ฟเวอร์ไม่ได้ — หน้าต่างสีดำที่รันโปรแกรมอยู่ปิดไปหรือเปล่า");
     return;
   }
+
+  if (handleLocked(data, "formError")) return;
 
   const exam = data.exam || {};
   $("examLine").textContent = exam.error
@@ -263,6 +278,7 @@ $("gradeForm").addEventListener("submit", async (e) => {
   try {
     const res = await fetch("/api/grade", { method: "POST", body });
     const data = await res.json();
+    if (handleLocked(data, "formError")) return;
     if (!res.ok) {
       show($("formError"), data.error || `ตรวจไม่สำเร็จ (รหัส ${res.status})`);
       return;
@@ -421,6 +437,7 @@ $("saveBtn").addEventListener("click", async () => {
       body: JSON.stringify({ student: lastGrading.student, results: results }),
     });
     const data = await res.json();
+    if (handleLocked(data, "saveError")) return;
     if (!res.ok) {
       show($("saveError"), data.error || `บันทึกไม่สำเร็จ (รหัส ${res.status})`);
       return;

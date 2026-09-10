@@ -28,6 +28,9 @@ DEFAULT_CLAUDE_MODEL = "claude-opus-5"
 
 SETTINGS_FILENAME = "settings.json"
 
+# ความยาวขั้นต่ำของรหัสผ่านหน้าเว็บ — สั้นกว่านี้เดาได้ในไม่กี่วินาที ถือว่าไม่ได้กั้น
+MIN_ACCESS_CODE_LENGTH = 6
+
 
 @dataclass
 class AppSettings:
@@ -45,6 +48,11 @@ class AppSettings:
 
     answer_key_path: str = "config/answer_key_config.json"
     regions_path: str = "config/regions.json"
+
+    # รหัสผ่านหน้าเว็บ — ว่าง = ไม่กั้น ใช้ได้เฉพาะตอนผูกกับ 127.0.0.1 เท่านั้น
+    # ทันทีที่เปิดให้เครื่องอื่นเข้าได้ (มือถือ) ต้องมีรหัส ไม่งั้น web_app.py ไม่ยอมเปิด
+    # เพราะหน้าเว็บนี้มีชื่อและลายมือนักเรียนอยู่ ใครต่อวงเดียวกันได้ก็เปิดดูได้หมด
+    access_code: str = ""
 
     # path ของไฟล์ที่โหลดมาจริง (None = ไม่มีไฟล์ ใช้ค่า default ล้วน)
     loaded_from: str | None = None
@@ -98,6 +106,11 @@ class AppSettings:
         return bool(self.spreadsheet_id) and self.google_ready
 
     @property
+    def access_code_ready(self) -> bool:
+        """ตั้งรหัสผ่านหน้าเว็บไว้แล้วหรือยัง"""
+        return bool(self.access_code)
+
+    @property
     def real_mode_ready(self) -> bool:
         """ตรวจของจริงได้ครบทั้งสายหรือยัง (อ่านลายมือ + ตรวจข้อบรรยาย)"""
         return self.ocr_ready and self.llm_ready
@@ -137,6 +150,11 @@ class AppSettings:
             f"บันทึกผล: Google Sheets ({self.spreadsheet_id})"
             if self.sheets_ready
             else f"บันทึกผล: ไฟล์ CSV ({self.csv_path})"
+        )
+        lines.append(
+            "รหัสผ่านหน้าเว็บ: ตั้งไว้แล้ว (ต้องกรอกก่อนใช้งาน)"
+            if self.access_code_ready
+            else "รหัสผ่านหน้าเว็บ: ไม่ได้ตั้ง — ใช้ได้เฉพาะเปิดจากเครื่องนี้เท่านั้น"
         )
         return lines
 
@@ -186,6 +204,14 @@ def load_settings(path: str | Path | None = None) -> AppSettings:
         data.get("google_credentials_path")
         or os.environ.get("GOOGLE_APPLICATION_CREDENTIALS", "")
     ).strip()
+
+    settings.access_code = str(data.get("access_code") or "").strip()
+    if settings.access_code and len(settings.access_code) < MIN_ACCESS_CODE_LENGTH:
+        settings.problems.append(
+            f"access_code สั้นเกินไป ต้องยาวอย่างน้อย {MIN_ACCESS_CODE_LENGTH} ตัว "
+            "— รหัสสั้นเดาได้ในไม่กี่วินาที ถือว่าไม่ได้กั้นอะไรเลย"
+        )
+        settings.access_code = ""
 
     sheet = data.get("sheet") or {}
     if isinstance(sheet, dict):
