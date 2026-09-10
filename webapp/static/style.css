@@ -351,3 +351,14 @@ input.score-input.edited { border-color: var(--ochre); background: #FFFBF4; }
   line-height: 1.6;
   color: var(--muted);
 }
+
+/* ชื่อไฟล์ที่ทำให้แถบเตือน "โปรแกรมถูกอัปเดต" เด้ง — ตัวเล็กกว่าเนื้อความ เพราะเป็น
+   ข้อมูลสำหรับไล่หาสาเหตุ ไม่ใช่คำสั่งที่ครูต้องทำตาม */
+.stale-files {
+  display: block;
+  margin-top: 8px;
+  font-family: "Consolas", "Courier New", monospace;
+  font-size: 12.5px;
+  opacity: .85;
+  word-break: break-all;
+}

@@ -120,6 +120,13 @@ async function loadStatus() {
   if (data.stale_server) sawStaleServer = true;
   $("staleBanner").hidden = !data.stale_server;
 
+  // บอกชื่อไฟล์ที่เนื้อไม่ตรงกับตอนเปิดโปรแกรม — เคยเจอแถบนี้เด้งค้างแล้วหาสาเหตุ
+  // ไม่เจอเลย ได้แต่เดากันไปมา มีชื่อไฟล์ให้ดูจะตัดปัญหานั้นทิ้งไปได้
+  const staleFiles = $("staleFiles");
+  const files = data.stale_files || [];
+  staleFiles.hidden = !data.stale_server || files.length === 0;
+  staleFiles.textContent = files.length ? `ไฟล์ที่เปลี่ยน: ${files.join(", ")}` : "";
+
   $("saveTarget").textContent = `จะบันทึกลง: ${data.sheet_target}`;
 
   // โหมดตรวจจริงกดไม่ได้ถ้ายังไม่ได้ตั้ง credentials — บอกเหตุผลตรงนั้นเลย

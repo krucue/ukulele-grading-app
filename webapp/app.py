@@ -65,17 +65,54 @@ SOURCE_DIRS = ("grading", "webapp")
 SOURCE_FILES = ("web_app.py", "grade_exam.py")
 
 
-def newest_source_mtime() -> float:
-    """เวลาแก้ไขล่าสุดของไฟล์โค้ดทั้งหมดในโปรเจกต์"""
-    newest = 0.0
-    for name in SOURCE_FILES:
-        path = PROJECT_ROOT / name
-        if path.exists():
-            newest = max(newest, path.stat().st_mtime)
+def source_files() -> list[Path]:
+    """ไฟล์โค้ดทั้งหมดที่ถูกอ่านเข้าหน่วยความจำตอนเปิดโปรแกรม เรียงให้คงที่"""
+    found = [PROJECT_ROOT / name for name in SOURCE_FILES]
     for folder in SOURCE_DIRS:
-        for path in (PROJECT_ROOT / folder).rglob("*.py"):
-            newest = max(newest, path.stat().st_mtime)
-    return newest
+        found.extend((PROJECT_ROOT / folder).rglob("*.py"))
+    return sorted(p for p in found if p.is_file())
+
+
+def _file_hash(path: Path) -> str | None:
+    """คืน None ถ้าอ่านไม่ได้ชั่วคราว (ไฟล์ถูกล็อกอยู่) ดีกว่าฟ้องว่าโค้ดเปลี่ยน"""
+    try:
+        return hashlib.sha256(path.read_bytes()).hexdigest()
+    except OSError:
+        return None
+
+
+def source_hashes() -> dict[str, str]:
+    """แฮชของ "เนื้อไฟล์" โค้ดทีละไฟล์ ไม่ใช่เวลาที่ไฟล์ถูกแตะ
+
+    เดิมเทียบด้วย mtime ซึ่งผิดบ่อยจนแถบเตือนเด้งค้างแบบไม่มีอะไรผิดจริง: mtime ขยับ
+    ได้จากหลายอย่างที่ไม่ได้แปลว่าโค้ดเปลี่ยน — git pull/checkout ที่เขียนไฟล์ทับด้วย
+    เนื้อเดิม, การก๊อบโฟลเดอร์, โปรแกรมสำรองข้อมูล/ซิงก์คลาวด์, แอนตี้ไวรัสที่แตะไฟล์,
+    หรือแค่เปิดไฟล์ใน editor แล้วเซฟทับโดยไม่ได้แก้อะไร
+
+    ครูจึงเจอแถบแดงค้างทั้งที่เปิดโปรแกรมใหม่แล้ว แล้วก็ไม่มีทางกดให้มันหายได้เลย
+    เทียบเนื้อไฟล์ตรง ๆ แทน แก้แล้วแก้กลับเป็นเหมือนเดิมก็ถือว่าไม่เปลี่ยน ตรงกับสิ่งที่
+    แถบนี้ต้องการจะบอกจริง ๆ คือ "โค้ดที่รันอยู่ในหน่วยความจำเป็นคนละตัวกับบนดิสก์แล้ว"
+
+    แยกเป็นรายไฟล์เพื่อให้บอกได้ด้วยว่า "ไฟล์ไหน" เปลี่ยน ไม่ใช่แค่ "มีอะไรเปลี่ยน" —
+    เคยเจอแถบนี้เด้งค้างแล้วหาสาเหตุไม่เจอเลย ได้แต่เดากันไปมาหลายรอบ
+
+    อ่านไฟล์ทั้ง 20 กว่าไฟล์ทุก 20 วินาทีไม่ใช่ปัญหา รวมกันไม่ถึง 300 KB และรันบน
+    เครื่องครูเองที่เปิดหน้าเว็บอยู่คนเดียว
+    """
+    hashed = ((path, _file_hash(path)) for path in source_files())
+    return {
+        path.relative_to(PROJECT_ROOT).as_posix(): file_hash
+        for path, file_hash in hashed
+        if file_hash is not None
+    }
+
+
+def changed_source_files(before: dict[str, str]) -> list[str]:
+    """ไฟล์ที่เนื้อไม่ตรงกับตอนเปิดโปรแกรม (รวมไฟล์ที่เพิ่มมาใหม่/หายไป)"""
+    now = source_hashes()
+    changed = [name for name, h in now.items() if before.get(name) != h]
+    changed += [name for name in before if name not in now]
+    return sorted(changed)
 
 
 def _session_secret(access_code: str) -> str:
@@ -277,7 +314,7 @@ def create_app(settings: AppSettings | None = None) -> Flask:
     # จะเป็นตัวใหม่แต่เซิร์ฟเวอร์เป็นตัวเก่า อาการที่เจอจริงคือหน้าเว็บบอกว่าตรวจจริง
     # ไม่ได้ทั้งที่โค้ดใหม่ทำได้แล้ว แล้วฟอร์มถูกส่งเป็นโหมดลองใช้งานโดยครูไม่รู้ตัว
     app.config["STARTED_AT"] = time.time()
-    app.config["SOURCE_MTIME_AT_START"] = newest_source_mtime()
+    app.config["SOURCE_HASHES_AT_START"] = source_hashes()
 
     app.secret_key = _session_secret(app.config["SETTINGS"].access_code)
     app.config["SESSION_COOKIE_SAMESITE"] = "Lax"
@@ -387,13 +424,16 @@ def create_app(settings: AppSettings | None = None) -> Flask:
         except GradingError as exc:
             exam = {"error": str(exc)}
 
-        # เผื่อ 2 วินาที กันเรื่องความละเอียดของ mtime บนไฟล์ระบบบางตัว
-        stale = newest_source_mtime() > app.config["SOURCE_MTIME_AT_START"] + 2
+        # เทียบเนื้อไฟล์ ไม่ใช่เวลาที่ไฟล์ถูกแตะ — เหตุผลอยู่ใน source_hashes()
+        changed = changed_source_files(app.config["SOURCE_HASHES_AT_START"])
 
         return jsonify(
             {
                 "settings_file": settings_obj.loaded_from,
-                "stale_server": stale,
+                "stale_server": bool(changed),
+                # บอกชื่อไฟล์มาด้วย เผื่อแถบเตือนเด้งค้างแบบหาสาเหตุไม่เจออีก
+                # จำกัด 5 ชื่อพอ ไม่ให้ยาวจนอ่านไม่ไหวบนมือถือ
+                "stale_files": changed[:5],
                 "problems": settings_obj.problems,
                 "status_lines": settings_obj.status_lines(),
                 "ready": {

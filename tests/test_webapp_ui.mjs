@@ -377,6 +377,7 @@ console.log("เตือนเมื่อเซิร์ฟเวอร์ท�
 check("ปกติไม่ขึ้นแถบเตือน", $("staleBanner").hidden);
 
 statusJson.stale_server = true;
+statusJson.stale_files = ["grading/scorer.py"];
 // app.js เรียก loadStatus() เองตอนโหลด — โหลดสคริปต์ซ้ำจึงเท่ากับให้มันอ่านสถานะใหม่
 // (ทำเป็นชุดสุดท้ายของไฟล์นี้โดยตั้งใจ เพราะการ eval ซ้ำจะผูก event listener ซ้อนอีกชุด)
 window.eval(appJs);
@@ -395,6 +396,14 @@ check(
 check(
   "บอกชื่อไฟล์ฝั่งมือถือด้วย ไม่ใช่บอกแต่ตัวเดิม",
   $("staleBanner").textContent.includes("ใช้กับมือถือได้")
+);
+// เคยเจอแถบนี้เด้งค้างแล้วหาสาเหตุไม่เจอเลย ได้แต่เดากันไปมาหลายรอบ
+// ตอนนี้เซิร์ฟเวอร์ส่งชื่อไฟล์ที่เนื้อไม่ตรงมาให้ด้วย
+check("แสดงชื่อไฟล์ที่เปลี่ยน", !$("staleFiles").hidden);
+check(
+  "ชื่อไฟล์ที่แสดงมาจากเซิร์ฟเวอร์จริง",
+  $("staleFiles").textContent.includes("grading/scorer.py"),
+  $("staleFiles").textContent
 );
 
 // หน้าที่ค้างอยู่ต้องรู้ตัวเองเมื่อครูเปิดโปรแกรมใหม่แล้ว — ไม่ต้องรอให้ครูกด F5

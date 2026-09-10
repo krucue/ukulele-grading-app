@@ -22,6 +22,7 @@ import json
 import os
 import sys
 import tempfile
+import time
 from io import BytesIO
 from pathlib import Path
 
@@ -593,6 +594,55 @@ with tempfile.TemporaryDirectory() as tmpdir:
 # "โปรแกรมถูกอัปเดต" สั่งให้ครูปิดแล้วเปิดโปรแกรมใหม่อยู่เรื่อย ๆ ทุกครั้งจะเตะมือถือ
 # ที่เปิดค้างไว้ออกกลางคัน ถ้ากำลังดูผลตรวจที่ยังไม่ได้บันทึกอยู่ ผลนั้นหายทั้งชุด
 # ---------------------------------------------------------------------------
+# ---------------------------------------------------------------------------
+# แถบเตือน "โปรแกรมถูกอัปเดต" ต้องดูที่เนื้อไฟล์ ไม่ใช่เวลาที่ไฟล์ถูกแตะ
+#
+# ของเดิมเทียบ mtime ซึ่งขยับได้จากหลายอย่างที่ไม่ได้แปลว่าโค้ดเปลี่ยน — git
+# pull/checkout ที่เขียนทับด้วยเนื้อเดิม, ซิงก์คลาวด์, โปรแกรมสำรองข้อมูล,
+# แอนตี้ไวรัส, หรือเปิดไฟล์ใน editor แล้วเซฟทับเฉย ๆ ครูจึงเจอแถบแดงเด้งค้าง
+# ทั้งที่ไม่มีอะไรผิด แล้วกดให้หายไม่ได้เลย
+# ---------------------------------------------------------------------------
+print("\nแถบเตือนโปรแกรมถูกอัปเดต (เทียบเนื้อไฟล์)")
+
+with tempfile.TemporaryDirectory() as tmpdir:
+    watched = create_app(AppSettings(csv_path=str(Path(tmpdir) / "ผลตรวจ.csv"), ocr_provider="api"))
+    watcher = watched.test_client()
+
+    def stale_now() -> tuple[bool, list]:
+        body = watcher.get("/api/status").get_json()
+        return body["stale_server"], body["stale_files"]
+
+    check("เซิร์ฟเวอร์ที่เพิ่งเปิด -> ไม่ฟ้อง", stale_now() == (False, []))
+
+    victim = PROJECT_ROOT / "grading" / "similarity.py"
+    original = victim.read_bytes()
+    try:
+        # เขียนทับด้วยเนื้อเดิม แล้วดันเวลาไปอนาคต — เลียนแบบสิ่งที่ซิงก์คลาวด์/
+        # git checkout ทำ ของเดิมจะฟ้องทันทีตรงนี้ทั้งที่โค้ดไม่ได้เปลี่ยนเลย
+        victim.write_bytes(original)
+        future = time.time() + 600
+        os.utime(victim, (future, future))
+        check("ไฟล์ถูกแตะ/เขียนทับด้วยเนื้อเดิม -> ต้องไม่ฟ้อง", stale_now() == (False, []))
+
+        victim.write_bytes(original + "\n# แก้จริง\n".encode())
+        is_stale, files = stale_now()
+        check("แก้เนื้อไฟล์จริง -> ฟ้อง", is_stale)
+        check("บอกชื่อไฟล์ที่เปลี่ยนมาด้วย", files == ["grading/similarity.py"], str(files))
+    finally:
+        victim.write_bytes(original)
+
+    check("แก้กลับเป็นเหมือนเดิม -> เลิกฟ้อง", stale_now() == (False, []))
+
+check("แฮชรายไฟล์ครอบคลุมทั้ง grading/ และ webapp/", {
+    "grading/scorer.py", "webapp/app.py", "web_app.py"
+} <= set(webapp_app.source_hashes()))
+# __pycache__ ถูกเขียนใหม่ตอนรันอยู่แล้ว ถ้าหลุดเข้ามาจะฟ้องรัว ๆ ตลอดเวลา
+check(
+    "ไม่นับไฟล์ใน __pycache__",
+    not any("__pycache__" in name for name in webapp_app.source_hashes()),
+)
+
+
 print("\nเซสชันข้ามการปิด-เปิดโปรแกรม")
 
 with tempfile.TemporaryDirectory() as tmpdir:
