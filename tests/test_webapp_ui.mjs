@@ -329,6 +329,46 @@ await tick();
 check("ถึงจะสั่งกดปุ่มบันทึกตรง ๆ ก็ไม่ยิงไปที่ /api/save", saveCalls === savesBefore);
 
 
+// ---------- เซสชันหลุดตอนมีผลตรวจค้างบนจอ ----------
+// ตัวเช็คสถานะยิงทุก 20 วินาทีอยู่เบื้องหลัง ถ้ามันเจอ 401 แล้วพาออกจากหน้าไปเลย
+// ผลตรวจที่ครูไล่แก้คะแนนมาทั้งชุดหายหมด ต้องอัปโหลดกระดาษตรวจใหม่ตั้งแต่ต้น
+console.log("");
+console.log("เซสชันหลุดตอนมีผลตรวจค้างอยู่บนจอ");
+
+gradeResponse = gradeJson;              // กลับมาโหมดตรวจจริง ปุ่มบันทึกจะได้โผล่
+$("studentName").value = "ด.ญ. ตรวจค้างไว้";
+$("gradeForm").dispatchEvent(new window.Event("submit", { bubbles: true, cancelable: true }));
+await tick();
+check("มีผลตรวจค้างบนจอ และยังไม่ได้บันทึก", !$("results").hidden && !$("saveBtn").hidden);
+
+const rowsBefore = $("resultRows").querySelectorAll("tr").length;
+navigationAttempted = false;
+statusJson.locked = true;               // เซิร์ฟเวอร์ถูกเปิดใหม่ คุกกี้เดิมใช้ไม่ได้แล้ว
+window.dispatchEvent(new window.Event("focus"));
+await tick();
+
+check("ไม่เด้งออกจากหน้าไปทิ้งผลตรวจ", !navigationAttempted);
+check("ผลตรวจยังอยู่ครบทุกข้อ", $("resultRows").querySelectorAll("tr").length === rowsBefore);
+check("แต่บอกครูว่าหลุดจากระบบแล้ว", !$("formError").hidden);
+check(
+  "บอกด้วยว่าผลบนจอยังอยู่ ไม่ใช่ปล่อยให้คิดว่าหายหมด",
+  $("formError").textContent.includes("ยังอยู่ครบ"),
+  $("formError").textContent
+);
+check("บอกทางแก้ว่าให้ไปเข้าสู่ระบบใหม่", $("formError").textContent.includes("/login"));
+
+// พอไม่มีผลค้างแล้ว การพาไปหน้าล็อกอินให้เลยคือสิ่งที่ควรทำ ไม่ต้องให้ครูหาเอง
+statusJson.locked = true;
+click("nextBtn");                       // ล้างผลของคนเก่าทิ้ง = ไม่มีอะไรให้หายแล้ว
+await tick();
+navigationAttempted = false;
+window.dispatchEvent(new window.Event("focus"));
+await tick();
+await new Promise((r) => setTimeout(r, 1400));   // handleLocked หน่วง 1.2 วินาทีก่อนพาไป
+check("ไม่มีผลค้างแล้ว -> พาไปหน้ากรอกรหัสให้เลย", navigationAttempted);
+statusJson.locked = false;
+
+
 // ---------- เซิร์ฟเวอร์คนละรุ่นกับไฟล์บนดิสก์ ----------
 // เกิดขึ้นจริงเมื่ออัปเดตโปรแกรมระหว่างที่ครูเปิดหน้าต่างสีดำค้างไว้: หน้าเว็บเป็นตัวใหม่
 // (โหลดจากดิสก์ทุกครั้ง) แต่เซิร์ฟเวอร์เป็นตัวเก่า ปุ่มตรวจจริงเลยกดไม่ได้ทั้งที่โค้ดใหม่ทำได้แล้ว
@@ -346,7 +386,16 @@ check(
   "บอกวิธีแก้ตรง ๆ ว่าให้เปิดโปรแกรมใหม่",
   $("staleBanner").textContent.includes("เปิดโปรแกรมตรวจข้อสอบ.bat")
 );
-check("บอกให้กด F5 ด้วย ไม่ใช่แค่เปิดโปรแกรมใหม่", $("staleBanner").textContent.includes("F5"));
+// แถบนี้เด้งขึ้นบนมือถือด้วย ซึ่งกดอะไรตามคำแนะนำไม่ได้เลยสักข้อ (ไม่มีหน้าต่างสีดำ
+// ไม่มีปุ่ม F5) ถ้าไม่บอกว่าต้องไปทำที่คอม ครูจะนั่งงงว่าให้กดอะไรบนมือถือ
+check(
+  "บอกว่าต้องไปทำที่เครื่องคอม ไม่ใช่กดบนมือถือ",
+  $("staleBanner").textContent.includes("ที่เครื่องคอม")
+);
+check(
+  "บอกชื่อไฟล์ฝั่งมือถือด้วย ไม่ใช่บอกแต่ตัวเดิม",
+  $("staleBanner").textContent.includes("ใช้กับมือถือได้")
+);
 
 // หน้าที่ค้างอยู่ต้องรู้ตัวเองเมื่อครูเปิดโปรแกรมใหม่แล้ว — ไม่ต้องรอให้ครูกด F5
 // (เบราว์เซอร์มักสลับมาที่แท็บเดิมโดยไม่โหลดหน้าใหม่ ครูจึงเห็นภาพเก่าค้างอยู่)

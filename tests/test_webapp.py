@@ -158,6 +158,7 @@ except ImportError:
 import web_app  # noqa: E402
 from webapp import app as webapp_app  # noqa: E402
 from webapp import create_app  # noqa: E402
+from webapp.app import _session_secret  # noqa: E402
 
 # web_app.py คือไฟล์ที่ .bat เรียก เป็นทางเข้าหลักของครู แต่ไม่มีเทสไหนแตะเลย
 # แค่ import ให้ผ่านก็กัน syntax error ที่จะทำให้ครูดับเบิลคลิกแล้วไม่มีอะไรขึ้นได้แล้ว
@@ -584,6 +585,55 @@ with tempfile.TemporaryDirectory() as tmpdir:
     locked.post("/logout")
     res = locked.get("/api/status")
     check("กดออกจากระบบแล้วกลับไปถูกล็อก", res.status_code == 401)
+
+# ---------------------------------------------------------------------------
+# เซสชันต้องรอดข้ามการปิด-เปิดโปรแกรม แต่ต้องตายเมื่อครูเปลี่ยนรหัสผ่าน
+#
+# เดิมสุ่ม secret_key ใหม่ทุกครั้งที่เปิดโปรแกรม ซึ่งพังเมื่อใช้จริง: แถบเตือน
+# "โปรแกรมถูกอัปเดต" สั่งให้ครูปิดแล้วเปิดโปรแกรมใหม่อยู่เรื่อย ๆ ทุกครั้งจะเตะมือถือ
+# ที่เปิดค้างไว้ออกกลางคัน ถ้ากำลังดูผลตรวจที่ยังไม่ได้บันทึกอยู่ ผลนั้นหายทั้งชุด
+# ---------------------------------------------------------------------------
+print("\nเซสชันข้ามการปิด-เปิดโปรแกรม")
+
+with tempfile.TemporaryDirectory() as tmpdir:
+    same = AppSettings(
+        csv_path=str(Path(tmpdir) / "ผลตรวจ.csv"), ocr_provider="api", access_code="รหัสลับ123"
+    )
+    before = create_app(same)
+    after = create_app(same)  # = ปิดแล้วเปิดโปรแกรมใหม่ด้วยค่าตั้งเดิม
+    check("เปิดโปรแกรมใหม่แล้วกุญแจเซ็นคุกกี้ยังเป็นตัวเดิม", before.secret_key == after.secret_key)
+
+    phone = before.test_client()
+    phone.post("/login", data={"access_code": "รหัสลับ123"})
+    token = phone.get_cookie("session").value
+
+    reopened = after.test_client()
+    reopened.set_cookie("session", token)
+    check(
+        "มือถือที่เปิดค้างไว้ ยังใช้งานต่อได้หลังเปิดโปรแกรมใหม่",
+        reopened.get("/api/status").status_code == 200,
+    )
+
+    # คุณสมบัติที่ยังต้องมีอยู่ คือพอครูเปลี่ยนรหัสผ่าน ทุกเครื่องที่ล็อกอินค้างไว้
+    # ต้องหลุดออกทันที ซึ่งเป็นจังหวะที่ต้องการให้หลุดจริง ๆ ต่างจากการปิด-เปิดโปรแกรม
+    changed = create_app(
+        AppSettings(
+            csv_path=str(Path(tmpdir) / "ผลตรวจ.csv"),
+            ocr_provider="api",
+            access_code="เปลี่ยนรหัสใหม่",
+        )
+    )
+    stale_phone = changed.test_client()
+    stale_phone.set_cookie("session", token)
+    check(
+        "ครูเปลี่ยนรหัสผ่าน -> เครื่องที่ล็อกอินค้างไว้หลุดทันที",
+        stale_phone.get("/api/status").status_code == 401,
+    )
+
+# ไม่ตั้งรหัส = ไม่ได้เปิดให้เครื่องอื่นเข้า ไม่มีใครใช้ session สุ่มกุญแจไปตามเดิม
+check("ไม่ตั้งรหัสผ่าน -> ยังสุ่มกุญแจใหม่ทุกครั้ง", _session_secret("") != _session_secret(""))
+check("ตั้งรหัสเดียวกัน -> ได้กุญแจเดิมเสมอ", _session_secret("abcdef") == _session_secret("abcdef"))
+check("คนละรหัส -> คนละกุญแจ", _session_secret("abcdef") != _session_secret("abcdeg"))
 
 # ไม่ตั้งรหัส = ต้องใช้งานได้เหมือนเดิมทุกอย่าง (กรณีเปิดจากเครื่องตัวเองอย่างเดียว
 # ซึ่งเป็นค่าเริ่มต้น) ด่านนี้ต้องไม่ไปขวางครูที่ไม่ได้จะใช้มือถือ

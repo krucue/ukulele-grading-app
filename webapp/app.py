@@ -14,6 +14,7 @@ HTTP request <-> การเรียก pipeline เดิม ไม่มี�
 from __future__ import annotations
 
 import contextlib
+import hashlib
 import hmac
 import json
 import os
@@ -75,6 +76,25 @@ def newest_source_mtime() -> float:
         for path in (PROJECT_ROOT / folder).rglob("*.py"):
             newest = max(newest, path.stat().st_mtime)
     return newest
+
+
+def _session_secret(access_code: str) -> str:
+    """กุญแจเซ็นคุกกี้ — ผูกกับรหัสผ่าน ไม่ใช่สุ่มใหม่ทุกครั้งที่เปิดโปรแกรม
+
+    เดิมสุ่มใหม่ทุกครั้ง ด้วยเหตุผลว่าปิดแล้วเปิดใหม่ควรบังคับให้กรอกรหัสอีกรอบ
+    แต่พอใช้จริงกลายเป็นปัญหาใหญ่กว่าที่แก้: แถบเตือน "โปรแกรมถูกอัปเดต" สั่งให้ครู
+    ปิดแล้วเปิดโปรแกรมใหม่อยู่เรื่อย ๆ ซึ่งทุกครั้งจะเตะมือถือที่เปิดค้างไว้ออกจากระบบ
+    กลางคัน — ถ้ากำลังดูผลตรวจที่ยังไม่ได้บันทึกอยู่ ผลนั้นหายไปเลย
+
+    ผูกกับรหัสผ่านแทน ได้คุณสมบัติที่ต้องการอยู่ดี คือ **เปลี่ยนรหัสเมื่อไหร่
+    ทุกเครื่องที่ล็อกอินค้างไว้หลุดทันที** ซึ่งเป็นตอนที่ต้องการให้หลุดจริง ๆ
+    ส่วนการปิด-เปิดโปรแกรมตามปกติไม่ควรเตะใครออก
+
+    ไม่มีรหัสผ่าน = ไม่ได้เปิดให้เครื่องอื่นเข้า ไม่มีใครใช้ session เลย สุ่มไปตามเดิม
+    """
+    if not access_code:
+        return secrets.token_hex(32)
+    return hashlib.sha256(f"ukulele-grading-app|{access_code}".encode()).hexdigest()
 
 
 class GradingError(Exception):
@@ -259,9 +279,7 @@ def create_app(settings: AppSettings | None = None) -> Flask:
     app.config["STARTED_AT"] = time.time()
     app.config["SOURCE_MTIME_AT_START"] = newest_source_mtime()
 
-    # สุ่มใหม่ทุกครั้งที่เปิดโปรแกรม — ตั้งใจให้ปิดแล้วเปิดใหม่ = ทุกเครื่องต้องกรอก
-    # รหัสอีกรอบ ครูจะได้ไม่ทิ้งมือถือที่ล็อกอินค้างไว้แล้วลืม
-    app.secret_key = secrets.token_hex(32)
+    app.secret_key = _session_secret(app.config["SETTINGS"].access_code)
     app.config["SESSION_COOKIE_SAMESITE"] = "Lax"
     app.config["SESSION_COOKIE_HTTPONLY"] = True
 
