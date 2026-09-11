@@ -362,3 +362,13 @@ input.score-input.edited { border-color: var(--ochre); background: #FFFBF4; }
   opacity: .85;
   word-break: break-all;
 }
+
+/* ป้ายรุ่นหน้าเว็บ — เขียนจากเซิร์ฟเวอร์ตรง ๆ ไม่ผ่าน JS ใช้เทียบว่าหน้าที่เห็นอยู่
+   เป็นรุ่นล่าสุดจริงไหม (ดู /api/status ที่คีย์ "build") ตัวเล็กจาง ไม่ใช่ข้อมูลที่ครู
+   ต้องอ่านทุกวัน แต่ต้องอยู่นอก JS ทั้งหมดเพื่อวินิจฉัยได้แม้ JavaScript ของแท็บนั้นพังไปแล้ว */
+.build-tag {
+  margin: 2px 0 0;
+  font-size: 11px;
+  font-family: "Consolas", "Courier New", monospace;
+  color: #9FB8AE;
+}
