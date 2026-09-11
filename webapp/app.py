@@ -473,7 +473,7 @@ def create_app(settings: AppSettings | None = None) -> Flask:
                     "real": settings_obj.real_mode_ready,
                 },
                 "sheet_target": (
-                    f"Google Sheets ({settings_obj.spreadsheet_id})"
+                    f"Google Sheets แท็บ {settings_obj.sheet_tab_name}"
                     if settings_obj.sheets_ready
                     else f"ไฟล์ {settings_obj.csv_path}"
                 ),
@@ -718,9 +718,11 @@ def create_app(settings: AppSettings | None = None) -> Flask:
                 from grading.sheets_writer import GoogleSheetsWriter
 
                 writer = GoogleSheetsWriter(
-                    settings_obj.spreadsheet_id, settings_obj.google_credentials_path
+                    settings_obj.spreadsheet_id,
+                    settings_obj.google_credentials_path,
+                    sheet_name=settings_obj.sheet_tab_name,
                 )
-                target = f"Google Sheets ({settings_obj.spreadsheet_id})"
+                target = f"Google Sheets แท็บ {settings_obj.sheet_tab_name}"
             except ImportError as exc:
                 # ไลบรารีของ Google ไม่ได้อยู่ใน requirements.txt หลักแล้ว (ตรวจข้อสอบไม่ต้องใช้)
                 # บอกคำสั่งติดตั้งไปเลย ครูจะได้ไม่ต้องไปหาเอง

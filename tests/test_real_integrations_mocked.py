@@ -247,6 +247,11 @@ fake_googleapiclient = types.ModuleType("googleapiclient.discovery")
 _recorded_calls = []
 
 
+# แท็บที่ "มีอยู่แล้ว" ในชีตปลอม — ตั้งเป็นชื่อที่ Google ตั้งมาให้ตอนสร้างชีตใหม่
+# เพื่อจำลองสถานการณ์จริงที่ครูจะเจอ: ชีตใหม่ไม่มีแท็บชื่อ "ผลตรวจ" โปรแกรมต้องสร้างให้เอง
+_fake_tabs = ["Sheet1"]
+
+
 class _FakeValuesResource:
     def update(self, spreadsheetId, range, valueInputOption, body):
         _recorded_calls.append(("update", spreadsheetId, range, body))
@@ -256,13 +261,29 @@ class _FakeValuesResource:
         _recorded_calls.append(("append", spreadsheetId, range, body))
         return self
 
+    def get(self, spreadsheetId, range):
+        _recorded_calls.append(("values.get", spreadsheetId, range, None))
+        return self
+
     def execute(self):
+        # หัวตารางยังว่าง -> ensure_header ต้องเขียนลงไป
         return {"status": "ok (fake)"}
 
 
 class _FakeSpreadsheets:
     def values(self):
         return _FakeValuesResource()
+
+    def get(self, spreadsheetId):
+        _recorded_calls.append(("sheets.get", spreadsheetId, None, None))
+        return self
+
+    def batchUpdate(self, spreadsheetId, body):
+        _recorded_calls.append(("batchUpdate", spreadsheetId, None, body))
+        return self
+
+    def execute(self):
+        return {"sheets": [{"properties": {"title": t}} for t in _fake_tabs]}
 
 
 class _FakeSheetsService:
@@ -285,8 +306,64 @@ writer = GoogleSheetsWriter(spreadsheet_id="FAKE_SHEET_ID", credentials_path="/f
 writer.ensure_header(["ชื่อ", "ข้อ 1.1", "คะแนนรวม"])
 writer.append_row(["เด็กชายทดสอบ", 1.0, 6.0])
 
-check("เรียก ensure_header -> ยิง values().update() พร้อม spreadsheet_id ถูกต้อง", _recorded_calls[0][0] == "update" and _recorded_calls[0][1] == "FAKE_SHEET_ID")
-check("เรียก append_row -> ยิง values().append() พร้อมข้อมูลแถวถูกต้อง", _recorded_calls[1][0] == "append" and _recorded_calls[1][3]["values"] == [["เด็กชายทดสอบ", 1.0, 6.0]])
+kinds = [c[0] for c in _recorded_calls]
+
+# ชีตที่เพิ่งสร้างใหม่มีแต่แท็บ "Sheet1" ไม่มี "ผลตรวจ" — ถ้าโปรแกรมไม่สร้างแท็บให้
+# Google จะตอบ "Unable to parse range" ซึ่งครูอ่านแล้วไม่มีทางรู้ว่าต้องไปทำอะไร
+check("อ่านรายชื่อแท็บในชีตก่อนเขียน", "sheets.get" in kinds)
+add_sheet = [c for c in _recorded_calls if c[0] == "batchUpdate"]
+check("ไม่เจอแท็บที่ต้องใช้ -> สร้างให้เอง ไม่ปล่อยให้พัง", len(add_sheet) == 1)
+check(
+    "สร้างแท็บชื่อตามที่ตั้งไว้",
+    add_sheet[0][3]["requests"][0]["addSheet"]["properties"]["title"] == "ผลตรวจ",
+)
+
+update_calls = [c for c in _recorded_calls if c[0] == "update"]
+check("เรียก ensure_header -> ยิง values().update() พร้อม spreadsheet_id ถูกต้อง", len(update_calls) == 1 and update_calls[0][1] == "FAKE_SHEET_ID")
+append_calls = [c for c in _recorded_calls if c[0] == "append"]
+check("เรียก append_row -> ยิง values().append() พร้อมข้อมูลแถวถูกต้อง", len(append_calls) == 1 and append_calls[0][3]["values"] == [["เด็กชายทดสอบ", 1.0, 6.0]])
+
+# หาแท็บเจอแล้วต้องไม่สร้างซ้ำ และต้องไม่ถามรายชื่อแท็บใหม่ทุกครั้งที่เขียน
+_fake_tabs.append("ผลตรวจ")
+_recorded_calls.clear()
+writer2 = GoogleSheetsWriter(spreadsheet_id="FAKE_SHEET_ID", credentials_path="/fake/path.json")
+writer2.append_row(["คนที่สอง", 1.0, 7.0])
+writer2.append_row(["คนที่สาม", 1.0, 8.0])
+kinds2 = [c[0] for c in _recorded_calls]
+check("มีแท็บอยู่แล้ว -> ไม่สร้างซ้ำ", "batchUpdate" not in kinds2)
+check("ถามรายชื่อแท็บครั้งเดียว ไม่ถามซ้ำทุกแถว", kinds2.count("sheets.get") == 1)
+
+# อีเมลของ service account คือสิ่งที่ครูต้องเอาไปแชร์ชีต ต้องดึงมาใส่ข้อความ error ได้
+import json as _json  # noqa: E402
+import tempfile as _tempfile  # noqa: E402
+
+from grading.sheets_writer import service_account_email  # noqa: E402
+
+with _tempfile.TemporaryDirectory() as _tmp:
+    _cred = os.path.join(_tmp, "cred.json")
+    with open(_cred, "w", encoding="utf-8") as f:
+        _json.dump({"client_email": "grading-bot@proj.iam.gserviceaccount.com"}, f)
+    check("อ่านอีเมล service account จากไฟล์ credentials ได้", service_account_email(_cred) == "grading-bot@proj.iam.gserviceaccount.com")
+check("ไฟล์ credentials พัง -> คืนค่าว่าง ไม่ throw", service_account_email("/ไม่มีไฟล์นี้.json") == "")
+
+# error ดิบของ Google อ่านไม่รู้เรื่องว่าต้องไปแก้ตรงไหน ต้องแปลให้ครูทำตามได้ทันที
+# โดยเฉพาะ 403 ที่เกือบทุกครั้งคือลืมแชร์ชีตให้ service account — ต้องบอกอีเมลไปเลย
+with _tempfile.TemporaryDirectory() as _tmp:
+    _cred = os.path.join(_tmp, "cred.json")
+    with open(_cred, "w", encoding="utf-8") as f:
+        _json.dump({"client_email": "bot@proj.iam.gserviceaccount.com"}, f)
+    _w = GoogleSheetsWriter(spreadsheet_id="SHEET_X", credentials_path=_cred)
+
+    msg403 = str(_w._explain(Exception("<HttpError 403 ... permission>")))
+    check("403 -> บอกให้แชร์ชีต", "แชร์" in msg403)
+    check("403 -> บอกอีเมลที่ต้องแชร์ให้ ไม่ต้องไปหาเอง", "bot@proj.iam.gserviceaccount.com" in msg403)
+
+    msg404 = str(_w._explain(Exception("<HttpError 404 requested entity was not found>")))
+    check("404 -> บอกให้ตรวจ spreadsheet_id", "spreadsheet_id" in msg404)
+    check("404 -> บอกรหัสชีตที่ใช้อยู่ด้วย", "SHEET_X" in msg404)
+
+    msgApi = str(_w._explain(Exception("Google Sheets API has not been used in project 123")))
+    check("ยังไม่เปิด API -> บอกตรง ๆ", "เปิดใช้ Google Sheets API" in msgApi)
 
 del sys.modules["google.oauth2.service_account"]
 del sys.modules["googleapiclient.discovery"]

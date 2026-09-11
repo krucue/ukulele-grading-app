@@ -45,6 +45,9 @@ class AppSettings:
     sheet_mode: str = "csv"                    # "csv" | "google"
     csv_path: str = "ข้อมูล/ผลตรวจ/ผลตรวจ.csv"
     spreadsheet_id: str = ""
+    # ชื่อแท็บใน Google Sheet ที่จะเขียนลง — ถ้ายังไม่มีแท็บนี้ โปรแกรมสร้างให้เอง
+    # ครูจึงไม่ต้องไปเปลี่ยนชื่อแท็บ "Sheet1" ที่ Google ตั้งมาให้ตอนสร้างชีตใหม่
+    sheet_tab_name: str = "ผลตรวจ"
 
     answer_key_path: str = "config/answer_key_config.json"
     regions_path: str = "config/regions.json"
@@ -147,7 +150,7 @@ class AppSettings:
             else "ตรวจข้อบรรยาย: โหมดจำลอง — ยังไม่มีทั้ง anthropic_api_key และคำสั่ง claude"
         )
         lines.append(
-            f"บันทึกผล: Google Sheets ({self.spreadsheet_id})"
+            f"บันทึกผล: Google Sheets แท็บ \"{self.sheet_tab_name}\" ({self.spreadsheet_id})"
             if self.sheets_ready
             else f"บันทึกผล: ไฟล์ CSV ({self.csv_path})"
         )
@@ -218,6 +221,9 @@ def load_settings(path: str | Path | None = None) -> AppSettings:
         settings.sheet_mode = str(sheet.get("mode") or "csv").strip()
         settings.csv_path = str(sheet.get("csv_path") or settings.csv_path).strip()
         settings.spreadsheet_id = str(sheet.get("spreadsheet_id") or "").strip()
+        settings.sheet_tab_name = str(
+            sheet.get("tab_name") or settings.sheet_tab_name
+        ).strip()
     else:
         settings.problems.append('ค่า "sheet" ต้องเป็น JSON object (ปีกกา)')
 

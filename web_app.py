@@ -234,6 +234,22 @@ def main() -> None:
 
     for line in settings.status_lines():
         print(f"  · {line}")
+
+    # ลองต่อ Google Sheets ตั้งแต่ตอนเปิดโปรแกรม ไม่ใช่ไปรู้เอาตอนกดบันทึก
+    # เพราะกดบันทึกคือขั้นตอนสุดท้ายสุด กว่าจะถึงตรงนั้นครูตรวจกระดาษไปแล้วเป็นนาที
+    # ถ้าต่อไม่ได้จะได้รู้ตั้งแต่ยังไม่เริ่มตรวจ แล้วแก้ให้จบก่อน
+    if settings.sheets_ready:
+        from grading.sheets_writer import check_google_sheets
+
+        ok, message = check_google_sheets(
+            settings.spreadsheet_id,
+            settings.google_credentials_path,
+            sheet_name=settings.sheet_tab_name,
+        )
+        print(f"  {'·' if ok else '!'} {message}")
+        if not ok:
+            print("    (ยังตรวจข้อสอบได้ตามปกติ แต่จะกดบันทึกไม่ได้จนกว่าจะแก้ตรงนี้)")
+
     if settings.problems:
         print("\n  พบปัญหาในไฟล์ settings.json:")
         for problem in settings.problems:

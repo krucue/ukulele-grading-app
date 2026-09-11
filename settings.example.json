@@ -21,6 +21,8 @@
   "sheet": {
     "_mode": "csv = บันทึกลงไฟล์ในเครื่อง (ไม่ต้องตั้งอะไรเลย) · google = บันทึกลง Google Sheets (ต้องมี google_credentials_path)",
     "mode": "csv",
+    "_tab_name": "ชื่อแท็บใน Google Sheet ที่จะเขียนลง — ไม่มีแท็บนี้โปรแกรมสร้างให้เอง ไม่ต้องไปเปลี่ยนชื่อ Sheet1 ในชีต",
+    "tab_name": "ผลตรวจ",
     "csv_path": "ข้อมูล/ผลตรวจ/ผลตรวจ.csv",
     "_spreadsheet_id": "รหัสยาว ๆ ใน URL ของ Sheet: docs.google.com/spreadsheets/d/<ตรงนี้>/edit",
     "spreadsheet_id": ""
