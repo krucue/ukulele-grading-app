@@ -726,6 +726,55 @@ def create_app(settings: AppSettings | None = None, ocr_override=None) -> Flask:
         warnings.extend(pdf_warnings)
         return saved_paths, True
 
+    def _build_writer(settings_obj: AppSettings):
+        """สร้างตัวเขียนผล + ข้อความบอกปลายทาง — ใช้ร่วมกันทั้งตอนบันทึกและตอนเช็คชื่อซ้ำ"""
+        if settings_obj.sheets_ready:
+            try:
+                from grading.sheets_writer import GoogleSheetsWriter
+
+                return (
+                    GoogleSheetsWriter(
+                        settings_obj.spreadsheet_id,
+                        settings_obj.google_credentials_path,
+                        sheet_name=settings_obj.sheet_tab_name,
+                    ),
+                    f"Google Sheets แท็บ {settings_obj.sheet_tab_name}",
+                )
+            except ImportError as exc:
+                # ไลบรารีของ Google ไม่ได้อยู่ใน requirements.txt หลักแล้ว (ตรวจข้อสอบไม่ต้องใช้)
+                # บอกคำสั่งติดตั้งไปเลย ครูจะได้ไม่ต้องไปหาเอง
+                raise GradingError(
+                    f"ยังไม่ได้ติดตั้งไลบรารีของ Google ({exc}) — เปิด PowerShell ที่โฟลเดอร์นี้ "
+                    "แล้วพิมพ์: pip install -r requirements-google.txt "
+                    'หรือเปลี่ยน sheet.mode กลับเป็น "csv" ก็บันทึกได้เลยโดยไม่ต้องติดตั้งอะไร'
+                ) from exc
+            except GradingError:
+                raise
+            except Exception as exc:
+                raise GradingError(f"ต่อ Google Sheets ไม่สำเร็จ: {exc}") from exc
+
+        from grading.sheets_writer import CsvDryRunWriter
+
+        csv_path = Path(settings_obj.csv_path)
+        if not csv_path.is_absolute():
+            csv_path = PROJECT_ROOT / csv_path
+        return CsvDryRunWriter(path=csv_path), f"ไฟล์ {csv_path}"
+
+    def _already_saved_students() -> set[str]:
+        """ชื่อนักเรียนที่มีแถวอยู่ในชีต/ไฟล์คะแนนแล้ว
+
+        ใช้เตือนก่อนบันทึกซ้ำ เพราะการบันทึกต่อแถวใหม่เสมอ ไม่ได้ทับแถวเดิม —
+        ครูที่ตรวจซ้ำรอบสองจะได้นักเรียนคนเดียวสองแถวคนละคะแนน ซึ่งไปโผล่ตอน
+        รวมคะแนนปลายภาค ไม่ใช่ตอนตรวจ
+
+        อ่านไม่ได้ก็คืนชุดว่าง ไม่ใช่ล้มทั้งงาน — เตือนไม่ได้ยังดีกว่าตรวจไม่ได้
+        """
+        try:
+            writer, _ = _build_writer(current_settings())
+            return writer.existing_students()
+        except Exception:  # noqa: BLE001
+            return set()
+
     @app.route("/api/grade", methods=["POST"])
     def api_grade():
         config = load_exam_config()
@@ -749,6 +798,9 @@ def create_app(settings: AppSettings | None = None, ocr_override=None) -> Flask:
                 "class": request.form.get("student_class", "").strip(),
             }
             payload = _grade_pages(saved_paths, from_scan, student_info, config, warnings)
+            # เตือนก่อนบันทึกว่าชื่อนี้มีแถวอยู่แล้ว — บันทึกต่อแถวใหม่เสมอ ไม่ได้ทับแถวเดิม
+            name = student_info["name"].strip()
+            payload["already_saved"] = bool(name) and name in _already_saved_students()
         finally:
             # ลบทั้งโฟลเดอร์ — PDF ต้นทาง รูปที่แตกออกมา และภาพที่ align แล้ว
             # ภาพกระดาษคำตอบมีชื่อและลายมือนักเรียน ห้ามค้างอยู่ใน temp
@@ -818,34 +870,7 @@ def create_app(settings: AppSettings | None = None, ocr_override=None) -> Flask:
         else:
             status = "ผ่านอัตโนมัติ"
 
-        if settings_obj.sheets_ready:
-            try:
-                from grading.sheets_writer import GoogleSheetsWriter
-
-                writer = GoogleSheetsWriter(
-                    settings_obj.spreadsheet_id,
-                    settings_obj.google_credentials_path,
-                    sheet_name=settings_obj.sheet_tab_name,
-                )
-                target = f"Google Sheets แท็บ {settings_obj.sheet_tab_name}"
-            except ImportError as exc:
-                # ไลบรารีของ Google ไม่ได้อยู่ใน requirements.txt หลักแล้ว (ตรวจข้อสอบไม่ต้องใช้)
-                # บอกคำสั่งติดตั้งไปเลย ครูจะได้ไม่ต้องไปหาเอง
-                raise GradingError(
-                    f"ยังไม่ได้ติดตั้งไลบรารีของ Google ({exc}) — เปิด PowerShell ที่โฟลเดอร์นี้ "
-                    "แล้วพิมพ์: pip install -r requirements-google.txt "
-                    'หรือเปลี่ยน sheet.mode กลับเป็น "csv" ก็บันทึกได้เลยโดยไม่ต้องติดตั้งอะไร'
-                ) from exc
-            except Exception as exc:
-                raise GradingError(f"ต่อ Google Sheets ไม่สำเร็จ: {exc}") from exc
-        else:
-            from grading.sheets_writer import CsvDryRunWriter
-
-            csv_path = Path(settings_obj.csv_path)
-            if not csv_path.is_absolute():
-                csv_path = PROJECT_ROOT / csv_path
-            writer = CsvDryRunWriter(path=csv_path)
-            target = f"ไฟล์ {csv_path}"
+        writer, target = _build_writer(settings_obj)
 
         try:
             writer.ensure_header(sheet_header(config))
@@ -896,6 +921,8 @@ def create_app(settings: AppSettings | None = None, ocr_override=None) -> Flask:
                     "student": item["student"],
                     "status": item["status"],
                     "saved": item["saved"],
+                    # เคยมีแถวของชื่อนี้ในชีตอยู่ก่อนเริ่มงานนี้แล้วหรือเปล่า
+                    "already": item["already"],
                     "error": item["error"],
                     "total_score": (item["payload"] or {}).get("total_score"),
                     "max_total": (item["payload"] or {}).get("max_total"),
@@ -968,6 +995,10 @@ def create_app(settings: AppSettings | None = None, ocr_override=None) -> Flask:
             detail = " · ".join(problems) if problems else "ไม่มีไฟล์ที่ใช้ได้เลย"
             raise GradingError(f"เริ่มตรวจไม่ได้ — {detail}")
 
+        # อ่านรายชื่อที่บันทึกไปแล้วครั้งเดียวตอนเริ่มงาน ไม่ถามชีตซ้ำทุกคน
+        # (ถามทุกคน = ยิง API เพิ่มอีก 30 ครั้งต่อห้อง โดยได้คำตอบเดิม)
+        already = _already_saved_students()
+
         job = {
             "id": uuid.uuid4().hex[:12],
             "work_dir": work_dir,
@@ -985,6 +1016,7 @@ def create_app(settings: AppSettings | None = None, ocr_override=None) -> Flask:
                     "payload": None,
                     "error": "",
                     "saved": False,
+                    "already": entry["student"] in already,
                 }
                 for index, entry in enumerate(grouped)
             ],

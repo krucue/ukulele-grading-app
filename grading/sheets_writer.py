@@ -41,6 +41,21 @@ class CsvDryRunWriter:
         with open(self.path, "a", newline="", encoding="utf-8-sig") as f:
             csv.writer(f).writerow(row)
 
+    def existing_students(self) -> set[str]:
+        """ชื่อนักเรียนที่มีแถวอยู่แล้ว — ใช้เตือนก่อนบันทึกซ้ำ
+
+        บันทึกซ้ำไม่ได้ทับแถวเดิม แต่ต่อแถวใหม่ ปลายภาคจะได้นักเรียนคนเดียวสองแถว
+        คนละคะแนน ซึ่งไปโผล่ตอนรวมคะแนน ไม่ใช่ตอนตรวจ
+        """
+        if not self.path.exists():
+            return set()
+        try:
+            with open(self.path, newline="", encoding="utf-8-sig") as f:
+                rows = list(csv.reader(f))
+        except OSError:
+            return set()
+        return {row[0].strip() for row in rows[1:] if row and row[0].strip()}
+
 
 def service_account_email(credentials_path: str | Path) -> str:
     """อ่านอีเมลของ service account จากไฟล์ credentials
@@ -175,6 +190,25 @@ class GoogleSheetsWriter:
             raise
         except Exception as exc:
             raise self._explain(exc) from exc
+
+
+    def existing_students(self) -> set[str]:
+        """ชื่อนักเรียนที่มีแถวอยู่แล้วในชีต — ใช้เตือนก่อนบันทึกซ้ำ
+
+        อ่านไม่ได้ก็คืนชุดว่าง ไม่ใช่โยน error — เตือนไม่ได้ยังดีกว่าตรวจไม่ได้ทั้งใบ
+        """
+        self._ensure_tab()
+        try:
+            values = (
+                self.service.spreadsheets()
+                .values()
+                .get(spreadsheetId=self.spreadsheet_id, range=f"{self.sheet_name}!A2:A")
+                .execute()
+                .get("values", [])
+            )
+        except Exception:  # noqa: BLE001
+            return set()
+        return {row[0].strip() for row in values if row and str(row[0]).strip()}
 
 
 def check_google_sheets(

@@ -899,6 +899,65 @@ if _Image is not None:
         empty = batch.post("/api/batch/start", data={}, content_type="multipart/form-data")
         check("ไม่เลือกไฟล์เลย -> ถูกตีกลับ", empty.status_code == 400)
 
+    # ---------- เตือนเมื่อชื่อนี้เคยบันทึกไปแล้ว ----------
+    # /api/save ต่อแถวใหม่เสมอ ไม่ได้ทับแถวเดิม ถ้าครูตรวจซ้ำรอบสองแล้วกดบันทึก
+    # จะได้นักเรียนคนเดียวสองแถวคนละคะแนน ซึ่งไปโผล่ตอนรวมคะแนนปลายภาค ไม่ใช่ตอนตรวจ
+    print()
+    print("เตือนชื่อที่บันทึกไปแล้ว")
+
+    from grading.sheets_writer import CsvDryRunWriter
+
+    with tempfile.TemporaryDirectory() as tmpdir:
+        dup_csv = Path(tmpdir) / "ผลตรวจ.csv"
+        writer = CsvDryRunWriter(path=dup_csv)
+        check("ไฟล์ยังไม่มี -> ไม่มีใครถูกบันทึก", writer.existing_students() == set())
+
+        writer.ensure_header(["ชื่อ", "เลขที่", "ชั้น"])
+        writer.append_row(["929", "1", "6/1"])
+        writer.append_row(["Parn", "2", "6/1"])
+        check(
+            "อ่านชื่อที่บันทึกไปแล้วจากไฟล์คะแนนได้",
+            writer.existing_students() == {"929", "Parn"},
+            str(writer.existing_students()),
+        )
+
+        dup_app = create_app(
+            AppSettings(csv_path=str(dup_csv), ocr_provider="api"), ocr_override=canned_ocr
+        )
+        dup_client = dup_app.test_client()
+
+        graded_dup = dup_client.post(
+            "/api/grade",
+            data={
+                "student_name": "929",
+                "page1": (BytesIO(b"x"), "หน้า1.jpg"),
+                "page2": (BytesIO(b"x"), "หน้า2.jpg"),
+            },
+            content_type="multipart/form-data",
+        ).get_json()
+        check("ตรวจชื่อที่เคยบันทึก -> ติดธงเตือน", graded_dup["already_saved"] is True)
+
+        graded_new = dup_client.post(
+            "/api/grade",
+            data={
+                "student_name": "คนใหม่",
+                "page1": (BytesIO(b"x"), "หน้า1.jpg"),
+                "page2": (BytesIO(b"x"), "หน้า2.jpg"),
+            },
+            content_type="multipart/form-data",
+        ).get_json()
+        check("ชื่อที่ยังไม่เคยบันทึก -> ไม่ติดธง", graded_new["already_saved"] is False)
+
+        if _Image is not None:
+            started_dup = dup_client.post(
+                "/api/batch/start",
+                data={"papers": [(_one_paper_pdf(), "929.pdf"), (_one_paper_pdf(), "ยังไม่เคย.pdf")]},
+                content_type="multipart/form-data",
+            ).get_json()
+            by_name = {i["student"]: i for i in started_dup["items"]}
+            check("รายชื่อบอกว่าคนไหนเคยบันทึกแล้ว", by_name["929"]["already"] is True)
+            check("คนที่ยังไม่เคยบันทึกไม่ติดธง", by_name["ยังไม่เคย"]["already"] is False)
+
 
 print(f"\nผ่าน {passed} ตก {failed}")
 sys.exit(1 if failed else 0)

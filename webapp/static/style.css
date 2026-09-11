@@ -412,3 +412,10 @@ input.score-input.edited { border-color: var(--ochre); background: #FFFBF4; }
   .ways { flex-direction: column; }
   .roster th:nth-child(4), .roster td:nth-child(4) { display: none; }
 }
+
+/* ธงเตือนว่าชื่อนี้มีแถวอยู่ในชีตแล้ว — บันทึกอีกจะได้ 2 แถวคนละคะแนน */
+.dup-warn {
+  margin-top: 4px;
+  font-size: 12px;
+  color: var(--ochre);
+}

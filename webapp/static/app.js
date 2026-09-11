@@ -384,6 +384,16 @@ function renderResults(data) {
 
   const warnBox = $("warnings");
   warnBox.innerHTML = "";
+  // ชื่อนี้มีแถวอยู่ในชีตแล้ว — บันทึกอีกครั้งจะต่อแถวใหม่ ไม่ได้ทับแถวเดิม
+  // ปลายภาคจะได้นักเรียนคนเดียวสองแถวคนละคะแนน ซึ่งไปโผล่ตอนรวมคะแนน ไม่ใช่ตอนตรวจ
+  if (data.already_saved) {
+    const dup = document.createElement("div");
+    dup.className = "warn-box";
+    dup.textContent =
+      `มีชื่อ "${data.student.name}" อยู่ในชีตแล้ว — ถ้าบันทึกอีกจะได้ 2 แถวคนละคะแนน ` +
+      "ไม่ได้ทับแถวเดิม ถ้าตั้งใจตรวจซ้ำ ให้ไปลบแถวเก่าในชีตเอง";
+    warnBox.appendChild(dup);
+  }
   (data.warnings || []).forEach((w) => {
     const div = document.createElement("div");
     div.className = "warn-box";
@@ -524,11 +534,19 @@ $("saveBtn").addEventListener("click", async () => {
     savedOnce = true;
     btn.hidden = true;
     $("nextBtn").hidden = false;
+
+    // อัปเดตรายชื่อทันที — พอตรวจทั้งห้องจบแล้ว การถามความคืบหน้าจะหยุดไป
+    // ถ้าไม่สั่งตรงนี้ แถวของคนที่เพิ่งบันทึกจะยังขึ้นว่า "ดูคำตอบ" เหมือนไม่มีอะไรเกิดขึ้น
+    if (batchJobId) await refreshRoster();
   } catch (err) {
     show($("saveError"), `บันทึกไม่สำเร็จ: ${err.message}`);
   } finally {
     btn.disabled = false;
-    btn.textContent = "บันทึกคะแนน";
+    // เปิดจากรายชื่อ = ปุ่มนี้บันทึกเฉพาะคนที่เปิดอยู่ ไม่ใช่ทั้งห้อง ต้องคงข้อความไว้
+    btn.textContent =
+      openItemIndex === null
+        ? "บันทึกคะแนน"
+        : `บันทึกเฉพาะ ${(lastGrading && lastGrading.student.name) || "คนนี้"}`;
   }
 });
 
@@ -623,6 +641,13 @@ function renderRoster(job) {
 
     const tdStatus = document.createElement("td");
     tdStatus.appendChild(pill(item.saved ? "บันทึกแล้ว" : item.status));
+    // ชื่อนี้มีแถวอยู่ในชีตก่อนเริ่มงานนี้แล้ว — บันทึกอีกจะได้ 2 แถวคนละคะแนน
+    if (item.already && !item.saved) {
+      const dup = document.createElement("div");
+      dup.className = "dup-warn";
+      dup.textContent = "เคยบันทึกชื่อนี้ไปแล้ว";
+      tdStatus.appendChild(dup);
+    }
 
     const tdScore = document.createElement("td");
     tdScore.className = "num";
@@ -646,6 +671,19 @@ function renderRoster(job) {
     tr.append(tdName, tdStatus, tdScore, tdFlag, tdOpen);
     body.appendChild(tr);
   });
+}
+
+// ดึงรายชื่อล่าสุดมาวาดใหม่ — ใช้หลังบันทึก ไม่ต้องรอรอบถามความคืบหน้าถัดไป
+// (ซึ่งหยุดไปแล้วเมื่อตรวจครบทุกคน)
+async function refreshRoster() {
+  if (!batchJobId) return;
+  try {
+    const res = await fetch(`/api/batch/${batchJobId}`);
+    const job = await res.json();
+    if (res.ok) renderRoster(job);
+  } catch (err) {
+    // อัปเดตรายชื่อไม่สำเร็จไม่ใช่เรื่องคอขาดบาดตาย คะแนนบันทึกลงชีตไปแล้ว
+  }
 }
 
 async function pollBatch() {
@@ -884,8 +922,7 @@ $("saveAllBtn").addEventListener("click", async () => {
   }
   btn.disabled = false;
 
-  const after = await (await fetch(`/api/batch/${batchJobId}`)).json();
-  renderRoster(after);
+  await refreshRoster();
   if (failures.length) {
     show($("manyError"), `บันทึกไม่สำเร็จ ${failures.length} คน — ${failures.join(" · ")}`);
   }

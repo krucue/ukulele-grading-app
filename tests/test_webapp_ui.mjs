@@ -657,5 +657,55 @@ check("ไม่บันทึกคนที่ตรวจพลาด", !sav
 check("บอกผลว่าบันทึกไปกี่คน", !$("saveAllOk").hidden && $("saveAllOk").textContent.includes("2 คน"), $("saveAllOk").textContent);
 
 
+// ---------- หลังบันทึกทีละคน รายชื่อต้องอัปเดตเอง ----------
+// บั๊กจริง: พอตรวจครบทุกคนแล้ว การถามความคืบหน้าจะหยุดไป บันทึกทีละคนสำเร็จแล้ว
+// แถวนั้นยังขึ้นว่า "ดูคำตอบ" เหมือนไม่มีอะไรเกิดขึ้น ครูจึงรู้สึกว่าหน้าจอรีเฟรชไม่ได้
+console.log("");
+console.log("รายชื่ออัปเดตเองหลังบันทึกทีละคน");
+
+batchJson.items = [
+  { index: 0, student: "929", status: "เสร็จ", saved: false, already: true, error: "", total_score: 7, max_total: 15, needs_review: false, flagged: 0 },
+];
+let rosterFetches = 0;
+window.fetch = async (url, opts) => {
+  const u = String(url);
+  if (u.includes("/api/save")) {
+    // จำลองเซิร์ฟเวอร์: บันทึกแล้วธง saved เปลี่ยนเป็นจริง
+    batchJson.items[0].saved = true;
+    saveCalls++;
+    return { ok: true, json: async () => saveJson };
+  }
+  if (u.includes("/item/")) return { ok: true, json: async () => ({ ...gradeJson, index: 0, saved: false }) };
+  if (u.includes("/api/batch")) {
+    rosterFetches++;
+    return { ok: true, json: async () => batchJson };
+  }
+  if (u.includes("/api/status")) return { ok: true, json: async () => statusJson };
+  throw new Error(`เรียก url ที่ไม่ได้เตรียมไว้: ${u}`);
+};
+
+click("startManyBtn");
+await tick();
+await tick();
+check(
+  "ชื่อที่เคยบันทึกไปแล้วถูกเตือนในรายชื่อ",
+  $("rosterRows").textContent.includes("เคยบันทึกชื่อนี้ไปแล้ว"),
+  $("rosterRows").textContent
+);
+
+$("rosterRows").querySelector("button").dispatchEvent(new window.Event("click", { bubbles: true }));
+await tick();
+check("ปุ่มบันทึกบอกชัดว่าบันทึกเฉพาะคนนี้", $("saveBtn").textContent.includes("บันทึกเฉพาะ"), $("saveBtn").textContent);
+
+const fetchesBeforeSave = rosterFetches;
+click("saveBtn");
+for (let i = 0; i < 10; i++) await tick();
+check("บันทึกเสร็จแล้วไปดึงรายชื่อมาวาดใหม่", rosterFetches > fetchesBeforeSave);
+check(
+  "แถวของคนที่เพิ่งบันทึกเปลี่ยนเป็นบันทึกแล้ว",
+  $("rosterRows").textContent.includes("บันทึกแล้ว"),
+  $("rosterRows").textContent
+);
+
 console.log(`\nผ่าน ${passed} ตก ${failed}`);
 process.exit(failed ? 1 : 0);
