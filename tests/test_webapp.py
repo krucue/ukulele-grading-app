@@ -771,5 +771,134 @@ if phone_bat.exists():
     check("เตือนเรื่อง firewall ของ Windows ไว้ด้วย", "Allow" in bat_text)
 
 
+# ---------------------------------------------------------------------------
+# ตรวจหลายคนทีเดียว
+#
+# ชื่อไฟล์คือชื่อนักเรียน จุดที่พลาดแล้วเจ็บคือ "จับคู่ผิดคน" — กระดาษของ ก ไปโผล่
+# เป็นคะแนนของ ข โดยไม่มีอะไรฟ้อง เทสชุดนี้จึงยึดการจับคู่ไฟล์ไว้เป็นพิเศษ
+# ---------------------------------------------------------------------------
+print("\nตรวจหลายคน — แยกชื่อนักเรียนจากชื่อไฟล์")
+
+from webapp.app import _student_name_from_filename  # noqa: E402
+
+check("PDF ใบเดียวจบ", _student_name_from_filename("929.pdf") == ("929", None))
+check("รูปหน้า 1 แบบ P1", _student_name_from_filename("948P1.jpg") == ("948", 1))
+check("รูปหน้า 2 แบบ P2", _student_name_from_filename("948P2.jpg") == ("948", 2))
+check("คั่นด้วยขีดล่างก็ได้", _student_name_from_filename("948_1.png") == ("948", 1))
+check("ชื่อไทยก็แยกได้", _student_name_from_filename("เด็กหญิงก-2.jpg") == ("เด็กหญิงก", 2))
+check("ไม่มีเลขหน้า -> ไม่เดาให้", _student_name_from_filename("มั่ว.jpg") == ("มั่ว", None))
+
+
+try:
+    from PIL import Image as _Image
+except ImportError:
+    # เครื่องที่ยังไม่ได้ pip install ข้ามชุดนี้ไป ส่วน CI ติดตั้งครบอยู่แล้ว
+    _Image = None
+    if os.environ.get("CI"):
+        check("import Pillow ได้ (CI ต้องติดตั้งครบ)", False, "ไม่พบ Pillow")
+
+if _Image is not None:
+    _Image.init()
+
+    def _one_paper_pdf():
+        buf = BytesIO()
+        pages = [_Image.new("RGB", (620, 877), (240, 238, 230)) for _ in range(2)]
+        pages[0].save(buf, format="PDF", save_all=True, append_images=pages[1:])
+        return BytesIO(buf.getvalue())
+
+    def _one_photo():
+        buf = BytesIO()
+        _Image.new("RGB", (620, 877), (240, 238, 230)).save(buf, format="JPEG")
+        return BytesIO(buf.getvalue())
+
+    print("\nตรวจหลายคน — เดินทั้งงานจนจบ")
+
+    with tempfile.TemporaryDirectory() as tmpdir:
+        batch_app = create_app(
+            AppSettings(csv_path=str(Path(tmpdir) / "ผลตรวจ.csv"), ocr_provider="api"),
+            ocr_override=canned_ocr,
+        )
+        batch = batch_app.test_client()
+
+        res = batch.post(
+            "/api/batch/start",
+            data={
+                "papers": [
+                    (_one_paper_pdf(), "929.pdf"),
+                    (_one_paper_pdf(), "Parn.pdf"),
+                    (_one_photo(), "948P1.jpg"),
+                    (_one_photo(), "948P2.jpg"),
+                    # ขาดคู่ — ต้องรายงาน ไม่ใช่เงียบทิ้งจนนักเรียนคนนี้ไม่มีคะแนน
+                    (_one_photo(), "เดี่ยวP1.jpg"),
+                    # บอกไม่ได้ว่าหน้าไหน — ต้องรายงานเหมือนกัน
+                    (_one_photo(), "ไม่รู้หน้า.jpg"),
+                ]
+            },
+            content_type="multipart/form-data",
+        )
+        started = res.get_json()
+        check("เริ่มงานตรวจทั้งห้องได้", res.status_code == 200, str(started)[:160])
+        check("นับคนได้ถูก (PDF 2 คน + รูปคู่ 1 คน)", started["total"] == 3, str(started.get("total")))
+        check(
+            "ชื่อนักเรียนมาจากชื่อไฟล์",
+            sorted(i["student"] for i in started["items"]) == ["929", "948", "Parn"],
+            str([i["student"] for i in started["items"]]),
+        )
+        check(
+            "ไฟล์ที่ขาดคู่ถูกรายงาน ไม่เงียบทิ้ง",
+            any("เดี่ยว" in p for p in started["problems"]),
+            str(started["problems"]),
+        )
+        check(
+            "ไฟล์ที่บอกไม่ได้ว่าหน้าไหนถูกรายงานด้วย",
+            any("ไม่รู้หน้า" in p for p in started["problems"]),
+            str(started["problems"]),
+        )
+
+        job_id = started["job_id"]
+        for _ in range(80):
+            status = batch.get(f"/api/batch/{job_id}").get_json()
+            if not status["running"]:
+                break
+            time.sleep(0.1)
+
+        check("ตรวจครบทุกคนแล้ว", status["done"] == status["total"], str(status["done"]))
+        check("ทุกคนสถานะเสร็จ", all(i["status"] == "เสร็จ" for i in status["items"]), str([i["status"] for i in status["items"]]))
+        check("รายชื่อบอกคะแนนของแต่ละคน", all(i["total_score"] is not None for i in status["items"]))
+
+        # เปิดดูคำตอบรายคน — นี่คือขั้นที่ครูต้องใช้ก่อนบันทึกทุกครั้ง
+        detail = batch.get(f"/api/batch/{job_id}/item/0")
+        one = detail.get_json()
+        check("เปิดดูคำตอบรายคนได้", detail.status_code == 200)
+        check("ได้คำตอบครบทุกข้อ", len(one["results"]) == len(config.questions))
+        check("ชื่อนักเรียนติดมาด้วย", one["student"]["name"] == status["items"][0]["student"])
+        check("ยังไม่ได้บันทึก", one["saved"] is False)
+
+        # บันทึกแล้วต้องถูกทำเครื่องหมายฝั่งเซิร์ฟเวอร์ ไม่ใช่จำไว้แค่ในหน้าเว็บ
+        # เพราะครูปิดแท็บแล้วเปิดใหม่ได้ระหว่างตรวจทั้งห้อง ถ้าจำแค่ฝั่งหน้าเว็บ
+        # พอเปิดใหม่จะไม่รู้ว่าใครบันทึกไปแล้ว แล้วกดซ้ำจนได้ 2 แถวในชีต
+        saved = batch.post(
+            "/api/save",
+            json={
+                "student": one["student"],
+                "results": [{"question_id": r["question_id"], "score": r["score"]} for r in one["results"]],
+                "job_id": job_id,
+                "item_index": 0,
+            },
+        )
+        check("บันทึกคนแรกได้", saved.status_code == 200, str(saved.get_json())[:160])
+        after = batch.get(f"/api/batch/{job_id}").get_json()
+        check("เซิร์ฟเวอร์จำว่าคนแรกบันทึกแล้ว", after["items"][0]["saved"] is True)
+        check("คนอื่นยังไม่ถูกทำเครื่องหมาย", after["items"][1]["saved"] is False)
+
+        # งานที่ไม่มีอยู่จริงต้องบอกให้รู้เรื่อง ไม่ใช่ 500
+        gone = batch.get("/api/batch/ไม่มีงานนี้")
+        check("ถามงานที่ไม่มีอยู่ -> บอกเหตุผล ไม่ใช่พัง", gone.status_code == 400)
+        check("บอกว่างานหายเพราะปิดโปรแกรม", "ปิดหน้าต่างสีดำ" in gone.get_json()["error"])
+
+        empty = batch.post("/api/batch/start", data={}, content_type="multipart/form-data")
+        check("ไม่เลือกไฟล์เลย -> ถูกตีกลับ", empty.status_code == 400)
+
+
 print(f"\nผ่าน {passed} ตก {failed}")
 sys.exit(1 if failed else 0)

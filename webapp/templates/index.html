@@ -47,6 +47,22 @@
     <p class="poll-log" id="pollLog" hidden></p>
   </section>
 
+  <!-- เลือกวิธีตรวจก่อน เพราะมันเปลี่ยนว่าต้องกรอก/แนบอะไรต่อ -->
+  <section class="panel">
+    <h2>ตรวจแบบไหน</h2>
+    <div class="ways">
+      <button type="button" class="way is-on" id="wayOne">
+        <strong>ตรวจรายคน</strong>
+        <em>กรอกชื่อเอง แนบกระดาษของคนเดียว เห็นผลแล้วแก้คะแนนได้ทันที</em>
+      </button>
+      <button type="button" class="way" id="wayMany">
+        <strong>ตรวจหลายคน</strong>
+        <em>เลือกไฟล์ทีเดียวหลายคน <strong>ชื่อไฟล์จะกลายเป็นชื่อนักเรียน</strong>
+        ระบบตรวจไปทีละคน แล้วครูเข้าไปดูคำตอบทีละคนก่อนบันทึก</em>
+      </button>
+    </div>
+  </section>
+
   <form id="gradeForm" class="grid">
 
     <section class="panel">
@@ -103,6 +119,41 @@
     </section>
 
   </form>
+
+  <section class="panel" id="manyPanel" hidden>
+    <h2><span class="step">1</span> เลือกกระดาษของทั้งห้อง</h2>
+    <p class="hint">เลือกได้ทีเดียวหลายไฟล์ · <strong>ชื่อไฟล์จะกลายเป็นชื่อนักเรียน</strong>
+    (แก้ได้อีกทีตอนเข้าไปดูคำตอบก่อนบันทึก)</p>
+    <ul class="hint rules">
+      <li>สแกนเป็น PDF: <strong>1 ไฟล์ = 1 คน</strong> เช่น <code>929.pdf</code> <code>Parn.pdf</code></li>
+      <li>ถ่ายรูปแยกหน้า: ตั้งชื่อลงท้ายด้วย 1 กับ 2 ของชื่อเดียวกัน เช่น
+        <code>948P1.jpg</code> คู่กับ <code>948P2.jpg</code></li>
+    </ul>
+
+    <label class="drop drop-pdf" id="dropMany">
+      <input type="file" id="manyFiles" multiple
+             accept="application/pdf,.pdf,image/jpeg,image/png,image/heic,image/heif,.heic,.heif">
+      <span class="drop-title">เลือกไฟล์ของทั้งห้อง</span>
+      <span class="drop-note">ยังไม่ได้เลือกไฟล์</span>
+    </label>
+
+    <p class="hint" id="manyNote">ตรวจไปทีละคน ใช้เวลาราว 1 นาทีต่อคน —
+    <strong>ปิดหน้านี้ระหว่างรอได้</strong> กลับมาเปิดใหม่แล้วผลที่ตรวจไปแล้วยังอยู่
+    (แต่ห้ามปิดหน้าต่างสีดำ)</p>
+    <div class="save-row">
+      <button type="button" class="primary" id="startManyBtn">เริ่มตรวจทั้งห้อง</button>
+      <button type="button" class="secondary" id="cancelManyBtn" hidden>หยุดตรวจที่เหลือ</button>
+      <span class="hint" id="manyProgress"></span>
+    </div>
+    <p class="error-box" id="manyError" hidden></p>
+    <div id="manyProblems"></div>
+    <table class="roster" id="rosterTable" hidden>
+      <thead>
+        <tr><th>นักเรียน</th><th>สถานะ</th><th class="num">คะแนน</th><th class="num">ต้องดูซ้ำ</th><th></th></tr>
+      </thead>
+      <tbody id="rosterRows"></tbody>
+    </table>
+  </section>
 
   <p class="error-box" id="formError" hidden></p>
 

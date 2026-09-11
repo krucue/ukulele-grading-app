@@ -183,8 +183,23 @@ const $ = (id) => window.document.getElementById(id);
 
 let saveCalls = 0;
 let gradeResponse = gradeJson;
+// งานตรวจทั้งห้องปลอม — ให้รูปร่างตรงกับที่ /api/batch/* ตอบจริง
+const batchJson = {
+  job_id: "งาน1",
+  total: 2,
+  done: 2,
+  running: false,
+  problems: ["เดี่ยว: มีแค่รูปหน้า 1 ขาดหน้า 2 — ไม่ได้ตรวจให้"],
+  items: [
+    { index: 0, student: "929", status: "เสร็จ", saved: false, error: "", total_score: 7, max_total: 15, needs_review: true, flagged: 2 },
+    { index: 1, student: "Parn", status: "พลาด", saved: false, error: "อ่านลายมือไม่สำเร็จ", total_score: null, max_total: null, needs_review: null, flagged: 0 },
+  ],
+};
+
 window.fetch = async (url) => {
   const u = String(url);
+  if (u.includes("/item/")) return { ok: true, json: async () => ({ ...gradeJson, index: 0, saved: false }) };
+  if (u.includes("/api/batch")) return { ok: true, json: async () => batchJson };
   if (u.includes("/api/status")) return { ok: true, json: async () => statusJson };
   if (u.includes("/api/grade")) return { ok: true, json: async () => gradeResponse };
   if (u.includes("/api/save")) {
@@ -510,6 +525,68 @@ check(
   $("settingsFileLine").textContent.includes("Claude Code") &&
     $("settingsFileLine").textContent.includes("anthropic_api_key")
 );
+
+
+// ---------- ตรวจหลายคน ----------
+// จุดที่พลาดแล้วเจ็บคือจับคู่ผิดคน (กระดาษของ ก ไปโผล่เป็นคะแนนของ ข โดยไม่มีอะไรฟ้อง)
+// กับการบันทึกซ้ำ เพราะ /api/save ต่อแถวใหม่เสมอ ไม่ได้ทับแถวเดิม
+console.log("");
+console.log("ตรวจหลายคน");
+
+check("เริ่มต้นอยู่ที่โหมดตรวจรายคน", $("manyPanel").hidden && !$("gradeForm").hidden);
+click("wayMany");
+check("สลับไปโหมดตรวจหลายคนได้", !$("manyPanel").hidden && $("gradeForm").hidden);
+check(
+  "ปุ่มโหมดที่เลือกอยู่ถูกไฮไลต์",
+  $("wayMany").classList.contains("is-on") && !$("wayOne").classList.contains("is-on")
+);
+
+// jsdom ใส่ไฟล์จริงลง input ไม่ได้ ต้องสวม property files ทับ
+const manyFile = new window.File(["x"], "929.pdf", { type: "application/pdf" });
+Object.defineProperty($("manyFiles"), "files", { value: [manyFile], configurable: true });
+click("startManyBtn");
+await tick();
+await tick();
+
+check("ขึ้นรายชื่อนักเรียนหลังเริ่มตรวจ", !$("rosterTable").hidden);
+check("แสดงครบทุกคนในงาน", $("rosterRows").querySelectorAll("tr").length === 2);
+check("บอกความคืบหน้าเป็นตัวเลข", $("manyProgress").textContent.includes("2 / 2"));
+check(
+  "ไฟล์ที่จับคู่ไม่ได้ถูกรายงานให้เห็น ไม่เงียบทิ้ง",
+  $("manyProblems").textContent.includes("ขาดหน้า 2"),
+  $("manyProblems").textContent
+);
+
+const rosterRows = $("rosterRows").querySelectorAll("tr");
+check("คนที่ตรวจพลาดถูกไฮไลต์แถว", rosterRows[1].classList.contains("is-failed"));
+check("บอกเหตุผลที่ตรวจพลาด", rosterRows[1].textContent.includes("อ่านลายมือไม่สำเร็จ"));
+check("คนที่ตรวจพลาดกดดูคำตอบไม่ได้", rosterRows[1].querySelector("button").disabled);
+check("คนที่ตรวจเสร็จกดดูคำตอบได้", !rosterRows[0].querySelector("button").disabled);
+check("แสดงคะแนนของคนที่ตรวจเสร็จ", rosterRows[0].textContent.includes("7/15"));
+
+// เปิดดูคำตอบรายคน — ขั้นที่ครูต้องใช้ก่อนบันทึกทุกครั้ง
+rosterRows[0].querySelector("button").dispatchEvent(new window.Event("click", { bubbles: true }));
+await tick();
+check("กดดูคำตอบแล้วตารางผลโผล่ขึ้นมา", !$("results").hidden);
+check("แสดงคำตอบครบทุกข้อของคนนั้น", $("resultRows").querySelectorAll("tr").length === 2);
+
+// บันทึกต้องผูกกับลำดับในรายชื่อ ไม่งั้นเซิร์ฟเวอร์ไม่รู้ว่าใครบันทึกไปแล้ว
+// แล้วครูที่ปิดแท็บระหว่างตรวจทั้งห้องจะกลับมากดซ้ำจนได้ 2 แถวในชีต
+let savedBody = null;
+const realFetch = window.fetch;
+window.fetch = async (url, opts) => {
+  if (String(url).includes("/api/save")) {
+    savedBody = JSON.parse(opts.body);
+    saveCalls++;
+    return { ok: true, json: async () => saveJson };
+  }
+  return realFetch(url, opts);
+};
+click("saveBtn");
+await tick();
+check("ส่ง job_id ไปด้วยตอนบันทึก", savedBody !== null && savedBody.job_id === "งาน1");
+check("ส่งลำดับของคนนั้นไปด้วย", savedBody !== null && savedBody.item_index === 0);
+window.fetch = realFetch;
 
 
 console.log(`\nผ่าน ${passed} ตก ${failed}`);

@@ -17,10 +17,13 @@ import contextlib
 import hashlib
 import hmac
 import os
+import re
 import secrets
 import shutil
 import tempfile
+import threading
 import time
+import uuid
 from pathlib import Path
 
 from flask import Flask, jsonify, redirect, render_template, request, session, url_for
@@ -313,6 +316,89 @@ def _result_to_dict(result: ScoreResult, config: ExamConfig) -> dict:
     }
 
 
+# ---------------------------------------------------------------------------
+# ตรวจหลายคนทีเดียว
+#
+# ชื่อไฟล์คือชื่อนักเรียน — ตรงกับวิธีที่ครูทำอยู่แล้ว (929.pdf, Parn.pdf, Dali.pdf)
+# และไม่ต้อง calibrate ช่องชื่อบนกระดาษเพิ่ม ซึ่งยังไม่มีใน regions.json
+# ครูแก้ชื่อได้อีกทีตอนเข้าไปตรวจคำตอบรายคนก่อนบันทึก
+# ---------------------------------------------------------------------------
+
+# ตัวห้อยบอกหน้าท้ายชื่อไฟล์รูป เช่น 948P1 / 948_1 / 948-2 / 948หน้า1
+# ใช้จับคู่รูป 2 หน้าของคนเดียวกันเข้าด้วยกัน ไฟล์ PDF ไม่ต้องใช้เพราะ 1 ไฟล์ = 1 คนอยู่แล้ว
+PAGE_SUFFIX_RE = re.compile(r"^(?P<stem>.+?)[\s_\-.]*(?:p|page|หน้า)?\s*(?P<page>[12])$", re.IGNORECASE)
+
+
+def _student_name_from_filename(filename: str) -> tuple[str, int | None]:
+    """คืน (ชื่อนักเรียน, เลขหน้า) จากชื่อไฟล์
+
+    "929.pdf"    -> ("929", None)      ไฟล์ PDF ใบเดียวจบ
+    "948P1.jpg"  -> ("948", 1)         รูปแยกหน้า ต้องไปจับคู่กับ 948P2
+    """
+    stem = Path(filename).stem.strip()
+    match = PAGE_SUFFIX_RE.match(stem)
+    if match:
+        return match.group("stem").strip(), int(match.group("page"))
+    return stem, None
+
+
+def _group_batch_uploads(files, work_dir: str) -> tuple[list[dict], list[str]]:
+    """จัดไฟล์ที่อัปโหลดมาเป็นรายคน คืน (รายการงาน, ปัญหาที่เจอ)
+
+    PDF 1 ไฟล์ = 1 คน · รูปต้องมาเป็นคู่ P1/P2 ของชื่อเดียวกัน
+    ไฟล์ที่จับคู่ไม่ได้ไม่ถูกเงียบทิ้ง — รายงานกลับไปให้ครูเห็นว่าใบไหนตกหล่น
+    เพราะเงียบทิ้ง = นักเรียนคนนั้นไม่มีคะแนนโดยไม่มีอะไรฟ้อง
+    """
+    jobs: dict[str, dict] = {}
+    problems: list[str] = []
+
+    for upload in files:
+        raw_name = upload.filename or ""
+        if not raw_name:
+            continue
+        student, page = _student_name_from_filename(raw_name)
+        suffix = Path(raw_name).suffix.lower()
+
+        if suffix in ALLOWED_PDF_SUFFIXES:
+            # PDF ที่ชื่อลงท้ายด้วยเลข 1/2 ยังเป็นของคนเดียวจบ ไม่ใช่รูปแยกหน้า
+            student = Path(raw_name).stem.strip()
+            entry = jobs.setdefault(student, {"student": student, "pdf": None, "pages": {}})
+            if entry["pdf"] is not None:
+                problems.append(f"{student}: มีไฟล์ PDF ซ้ำกันหลายไฟล์ ใช้ไฟล์แรกไฟล์เดียว")
+                continue
+            per_student_dir = tempfile.mkdtemp(prefix="ใบ_", dir=work_dir)
+            entry["pdf"] = _save_pdf_upload(upload, per_student_dir)
+            entry["dir"] = per_student_dir
+            continue
+
+        if page is None:
+            problems.append(
+                f"{raw_name}: บอกไม่ได้ว่าเป็นหน้าไหน — ตั้งชื่อไฟล์รูปให้ลงท้ายด้วย 1 หรือ 2 "
+                "(เช่น 948P1.jpg กับ 948P2.jpg) หรือสแกนรวมเป็น PDF ไฟล์เดียว"
+            )
+            continue
+
+        entry = jobs.setdefault(student, {"student": student, "pdf": None, "pages": {}})
+        entry.setdefault("dir", tempfile.mkdtemp(prefix="ใบ_", dir=work_dir))
+        if page in entry["pages"]:
+            problems.append(f"{student}: มีรูปหน้า {page} ซ้ำกัน ใช้ไฟล์แรกไฟล์เดียว")
+            continue
+        entry["pages"][page] = _save_upload(upload, page, entry["dir"])
+
+    items: list[dict] = []
+    for entry in jobs.values():
+        if entry["pdf"] is None and len(entry["pages"]) < 2:
+            missing = 2 if 1 in entry["pages"] else 1
+            problems.append(
+                f"{entry['student']}: มีแค่รูปหน้า {3 - missing} ขาดหน้า {missing} — ไม่ได้ตรวจให้"
+            )
+            continue
+        items.append(entry)
+
+    items.sort(key=lambda e: e["student"])
+    return items, problems
+
+
 def create_app(settings: AppSettings | None = None, ocr_override=None) -> Flask:
     """ocr_override มีไว้ให้เทสเท่านั้น: callable(config, crops) -> dict[question_id, OcrResult]
 
@@ -322,6 +408,8 @@ def create_app(settings: AppSettings | None = None, ocr_override=None) -> Flask:
     """
     app = Flask(__name__)
     app.config["OCR_OVERRIDE"] = ocr_override
+    # งานตรวจหลายคนที่ค้างอยู่ เก็บในหน่วยความจำของเซิร์ฟเวอร์ ไม่ผูกกับหน้าเว็บ
+    app.config["BATCH_JOBS"] = {}
     app.config["MAX_CONTENT_LENGTH"] = MAX_UPLOAD_BYTES
     # ห้ามแคชอะไรทั้งนั้น — โปรแกรมนี้รันในเครื่องครูเอง ไม่มีปัญหาเรื่องความเร็ว
     # แต่มีปัญหาใหญ่เรื่องหน้าเก่าค้าง: เวลาอัปเดตโปรแกรมแล้วเปิดใหม่ เบราว์เซอร์
@@ -765,6 +853,16 @@ def create_app(settings: AppSettings | None = None, ocr_override=None) -> Flask:
         except Exception as exc:
             raise GradingError(f"บันทึกผลไม่สำเร็จ: {exc}") from exc
 
+        # ถ้าแถวนี้มาจากงานตรวจหลายคน ให้ทำเครื่องหมายว่าคนนี้บันทึกแล้ว
+        # เก็บฝั่งเซิร์ฟเวอร์ ไม่ใช่ฝั่งหน้าเว็บ เพราะครูปิดแท็บแล้วเปิดใหม่ได้ระหว่างตรวจทั้งห้อง
+        # ถ้าจำไว้แค่ในหน้าเว็บ พอเปิดใหม่จะไม่รู้ว่าใครบันทึกไปแล้ว แล้วบันทึกซ้ำได้
+        job_id = str(payload.get("job_id") or "")
+        item_index = payload.get("item_index")
+        if job_id and isinstance(item_index, int):
+            job = app.config["BATCH_JOBS"].get(job_id)
+            if job is not None and 0 <= item_index < len(job["items"]):
+                job["items"][item_index]["saved"] = True
+
         return jsonify(
             {
                 "saved": True,
@@ -774,5 +872,156 @@ def create_app(settings: AppSettings | None = None, ocr_override=None) -> Flask:
                 "max_total": submission.max_total,
             }
         )
+
+    # ---------------- ตรวจหลายคน ----------------
+    #
+    # งานเก็บไว้ในหน่วยความจำของเซิร์ฟเวอร์ ไม่ผูกกับหน้าเว็บ ครูจึงปิดแท็บหรือดับหน้าจอ
+    # มือถือระหว่างรอได้ กลับมาเปิดใหม่แล้วผลที่ตรวจไปแล้วยังอยู่
+    #
+    # ข้อจำกัดที่ต้องรู้: ถ้าปิดหน้าต่างสีดำ (ตัวโปรแกรม) งานที่ยังไม่ได้บันทึกลงชีตจะหาย
+    # ยอมแลกเพราะการเก็บลงไฟล์ต้องจัดการเรื่องไฟล์ค้าง/ข้อมูลนักเรียนตกค้างเพิ่มอีกชุด
+    # ส่วนที่บันทึกลงชีตไปแล้วไม่หายอยู่แล้ว เพราะอยู่ในชีตไม่ได้อยู่ในโปรแกรม
+
+    def _job_summary(job: dict) -> dict:
+        """ข้อมูลย่อสำหรับหน้ารายชื่อ — ไม่ใส่คำตอบรายข้อ เพราะหน้านี้ถามซ้ำทุก 3 วินาที"""
+        return {
+            "job_id": job["id"],
+            "total": len(job["items"]),
+            "done": sum(1 for i in job["items"] if i["status"] in ("เสร็จ", "พลาด")),
+            "running": job["running"],
+            "problems": job["problems"],
+            "items": [
+                {
+                    "index": item["index"],
+                    "student": item["student"],
+                    "status": item["status"],
+                    "saved": item["saved"],
+                    "error": item["error"],
+                    "total_score": (item["payload"] or {}).get("total_score"),
+                    "max_total": (item["payload"] or {}).get("max_total"),
+                    "needs_review": (item["payload"] or {}).get("needs_review"),
+                    "flagged": sum(
+                        1 for r in (item["payload"] or {}).get("results", []) if r["flagged"]
+                    ),
+                }
+                for item in job["items"]
+            ],
+        }
+
+    def _run_batch(job: dict, config: ExamConfig) -> None:
+        """ตรวจทีละคนตามลำดับ — รันในเธรดแยก ไม่ผูกกับ request ของครู
+
+        ตรวจทีละคนไม่ใช่ยิงพร้อมกัน เพราะแต่ละคนกินเวลาราวนาทีและใช้ Claude ตัวเดียวกัน
+        ยิงพร้อมกันหลายคนไม่ได้เร็วขึ้นจริง แต่ทำให้ชนลิมิตและไล่หาสาเหตุยากขึ้นมาก
+        """
+        for item in job["items"]:
+            if job["cancelled"]:
+                item["status"] = "ยกเลิก"
+                continue
+            item["status"] = "กำลังตรวจ"
+            warnings: list[str] = []
+            try:
+                saved_paths, from_scan = _pages_for_item(item, warnings)
+                item["payload"] = _grade_pages(
+                    saved_paths,
+                    from_scan,
+                    {"name": item["student"], "no": "", "class": ""},
+                    config,
+                    warnings,
+                )
+                item["status"] = "เสร็จ"
+            # จับกว้าง ๆ ตั้งใจ — คนหนึ่งพังต้องไม่ทำให้ทั้งห้องหยุด ครูยังได้คะแนนคนที่เหลือ
+            except Exception as exc:  # noqa: BLE001
+                item["error"] = str(exc)
+                item["status"] = "พลาด"
+            finally:
+                # ลบไฟล์ของคนนี้ทันทีที่ตรวจเสร็จ ไม่รอจบทั้งห้อง — ภาพกระดาษมีชื่อและ
+                # ลายมือนักเรียน ยิ่งค้างใน temp นานยิ่งไม่ควร
+                shutil.rmtree(item["dir"], ignore_errors=True)
+
+        job["running"] = False
+        shutil.rmtree(job["work_dir"], ignore_errors=True)
+
+    def _pages_for_item(item: dict, warnings: list[str]) -> tuple[dict[int, str], bool]:
+        if item["pdf"]:
+            saved_paths, pdf_warnings = _pages_from_pdf(item["pdf"], item["dir"])
+            warnings.extend(pdf_warnings)
+            return saved_paths, True
+        return dict(item["pages"]), False
+
+    @app.route("/api/batch/start", methods=["POST"])
+    def api_batch_start():
+        config = load_exam_config()
+        uploads = request.files.getlist("papers")
+        if not uploads:
+            raise GradingError("ยังไม่ได้เลือกไฟล์ — เลือกกระดาษคำตอบของนักเรียนได้ทีละหลายไฟล์")
+
+        work_dir = tempfile.mkdtemp(prefix="ตรวจทั้งห้อง_")
+        try:
+            grouped, problems = _group_batch_uploads(uploads, work_dir)
+        except Exception:
+            shutil.rmtree(work_dir, ignore_errors=True)
+            raise
+
+        if not grouped:
+            shutil.rmtree(work_dir, ignore_errors=True)
+            detail = " · ".join(problems) if problems else "ไม่มีไฟล์ที่ใช้ได้เลย"
+            raise GradingError(f"เริ่มตรวจไม่ได้ — {detail}")
+
+        job = {
+            "id": uuid.uuid4().hex[:12],
+            "work_dir": work_dir,
+            "running": True,
+            "cancelled": False,
+            "problems": problems,
+            "items": [
+                {
+                    "index": index,
+                    "student": entry["student"],
+                    "pdf": entry["pdf"],
+                    "pages": entry["pages"],
+                    "dir": entry["dir"],
+                    "status": "รอตรวจ",
+                    "payload": None,
+                    "error": "",
+                    "saved": False,
+                }
+                for index, entry in enumerate(grouped)
+            ],
+        }
+        app.config["BATCH_JOBS"][job["id"]] = job
+
+        worker = threading.Thread(target=_run_batch, args=(job, config), daemon=True)
+        worker.start()
+        return jsonify(_job_summary(job))
+
+    def _find_job(job_id: str) -> dict:
+        job = app.config["BATCH_JOBS"].get(job_id)
+        if job is None:
+            raise GradingError(
+                "ไม่พบงานตรวจนี้แล้ว — งานที่ค้างอยู่จะหายเมื่อปิดหน้าต่างสีดำ (ตัวโปรแกรม) "
+                "ถ้าเพิ่งเปิดโปรแกรมใหม่ ต้องเริ่มตรวจใหม่อีกรอบ"
+            )
+        return job
+
+    @app.route("/api/batch/<job_id>")
+    def api_batch_status(job_id: str):
+        return jsonify(_job_summary(_find_job(job_id)))
+
+    @app.route("/api/batch/<job_id>/item/<int:index>")
+    def api_batch_item(job_id: str, index: int):
+        job = _find_job(job_id)
+        if not 0 <= index < len(job["items"]):
+            raise GradingError(f"ไม่มีนักเรียนลำดับที่ {index} ในงานตรวจนี้")
+        item = job["items"][index]
+        if item["payload"] is None:
+            raise GradingError(f"{item['student']}: ยังตรวจไม่เสร็จ ({item['status']})")
+        return jsonify({**item["payload"], "index": index, "saved": item["saved"]})
+
+    @app.route("/api/batch/<job_id>/cancel", methods=["POST"])
+    def api_batch_cancel(job_id: str):
+        job = _find_job(job_id)
+        job["cancelled"] = True
+        return jsonify(_job_summary(job))
 
     return app

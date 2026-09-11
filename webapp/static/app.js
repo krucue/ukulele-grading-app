@@ -307,7 +307,11 @@ function scoreChangedAfterSave() {
   );
 }
 
-$("nextBtn").addEventListener("click", resetForNextStudent);
+$("nextBtn").addEventListener("click", () => {
+  // หลุดจากรายชื่อของงานตรวจทั้งห้อง ไม่งั้นคนถัดไปจะถูกบันทึกทับลำดับของคนเก่า
+  openItemIndex = null;
+  resetForNextStudent();
+});
 
 // ---------- ตรวจข้อสอบ ----------
 
@@ -496,7 +500,14 @@ $("saveBtn").addEventListener("click", async () => {
     const res = await fetch("/api/save", {
       method: "POST",
       headers: { "Content-Type": "application/json" },
-      body: JSON.stringify({ student: lastGrading.student, results: results }),
+      body: JSON.stringify({
+        student: lastGrading.student,
+        results: results,
+        // ผูกกับรายชื่อตอนตรวจทั้งห้อง เซิร์ฟเวอร์จะได้จำว่าคนนี้บันทึกแล้ว
+        // เก็บฝั่งเซิร์ฟเวอร์ ไม่ใช่ฝั่งหน้าเว็บ เพราะครูปิดแท็บแล้วเปิดใหม่ได้
+        job_id: batchJobId || undefined,
+        item_index: openItemIndex === null ? undefined : openItemIndex,
+      }),
     });
     const data = await res.json();
     if (handleLocked(data, "saveError")) return;
@@ -534,3 +545,231 @@ setInterval(loadStatus, 20000);
 window.addEventListener("focus", () => {
   loadStatus();
 });
+
+// ---------- ตรวจหลายคน ----------
+//
+// งานอยู่ฝั่งเซิร์ฟเวอร์ หน้าเว็บแค่ถามความคืบหน้าเป็นระยะ ครูจึงปิดแท็บหรือดับจอมือถือ
+// ระหว่างรอได้ กลับมาเปิดใหม่แล้วกดต่อจากรายชื่อเดิมได้ (จำ job_id ไว้ใน sessionStorage)
+
+let batchJobId = null;
+let batchTimer = null;
+// ครูเปิดดูคำตอบของใครอยู่ในตอนนี้ — ใช้ผูกตอนกดบันทึกว่าเป็นของลำดับไหนในรายชื่อ
+let openItemIndex = null;
+
+const BATCH_KEY = "ukulele-batch-job";
+
+function setWay(many) {
+  $("wayOne").classList.toggle("is-on", !many);
+  $("wayMany").classList.toggle("is-on", many);
+  $("gradeForm").hidden = many;
+  $("manyPanel").hidden = !many;
+  // ผลของคนก่อนหน้าไม่ควรค้างข้ามโหมด ครูจะแยกไม่ออกว่าเป็นของใคร
+  $("results").hidden = true;
+  hide($("formError"));
+}
+
+$("wayOne").addEventListener("click", () => setWay(false));
+$("wayMany").addEventListener("click", () => setWay(true));
+
+$("manyFiles").addEventListener("change", () => {
+  const files = $("manyFiles").files;
+  const note = $("dropMany").querySelector(".drop-note");
+  note.textContent = files.length ? `เลือกไว้ ${files.length} ไฟล์` : "ยังไม่ได้เลือกไฟล์";
+  $("dropMany").classList.toggle("filled", files.length > 0);
+});
+
+function pill(status) {
+  const map = { รอตรวจ: "wait", กำลังตรวจ: "run", เสร็จ: "done", พลาด: "fail", ยกเลิก: "wait" };
+  const span = document.createElement("span");
+  span.className = `pill ${map[status] || "wait"}`;
+  span.textContent = status;
+  return span;
+}
+
+function renderRoster(job) {
+  $("rosterTable").hidden = false;
+  $("manyProgress").textContent = job.running
+    ? `ตรวจแล้ว ${job.done} / ${job.total} คน — กำลังตรวจต่อ`
+    : `ตรวจครบ ${job.done} / ${job.total} คนแล้ว`;
+  $("cancelManyBtn").hidden = !job.running;
+  $("startManyBtn").disabled = job.running;
+
+  const problemBox = $("manyProblems");
+  problemBox.innerHTML = "";
+  (job.problems || []).forEach((p) => {
+    const div = document.createElement("div");
+    div.className = "warn-box";
+    div.textContent = p;
+    problemBox.appendChild(div);
+  });
+
+  const body = $("rosterRows");
+  body.innerHTML = "";
+  job.items.forEach((item) => {
+    const tr = document.createElement("tr");
+    if (item.saved) tr.classList.add("is-saved");
+    if (item.status === "พลาด") tr.classList.add("is-failed");
+
+    const tdName = document.createElement("td");
+    tdName.textContent = item.student;
+    if (item.error) {
+      const why = document.createElement("div");
+      why.className = "qlabel";
+      why.textContent = item.error;
+      tdName.appendChild(why);
+    }
+
+    const tdStatus = document.createElement("td");
+    tdStatus.appendChild(pill(item.saved ? "บันทึกแล้ว" : item.status));
+
+    const tdScore = document.createElement("td");
+    tdScore.className = "num";
+    tdScore.textContent =
+      item.total_score === null || item.total_score === undefined
+        ? "—"
+        : `${item.total_score}/${item.max_total}`;
+
+    const tdFlag = document.createElement("td");
+    tdFlag.className = "num";
+    tdFlag.textContent = item.status === "เสร็จ" ? `${item.flagged} ข้อ` : "—";
+
+    const tdOpen = document.createElement("td");
+    const btn = document.createElement("button");
+    btn.type = "button";
+    btn.textContent = item.saved ? "ดูอีกครั้ง" : "ดูคำตอบ";
+    btn.disabled = item.status !== "เสร็จ";
+    btn.addEventListener("click", () => openBatchItem(item.index));
+    tdOpen.appendChild(btn);
+
+    tr.append(tdName, tdStatus, tdScore, tdFlag, tdOpen);
+    body.appendChild(tr);
+  });
+}
+
+async function pollBatch() {
+  if (!batchJobId) return;
+  let job;
+  try {
+    const res = await fetch(`/api/batch/${batchJobId}`);
+    job = await res.json();
+    if (handleLocked(job, "manyError")) return;
+    if (!res.ok) {
+      show($("manyError"), job.error || "ถามความคืบหน้าไม่สำเร็จ");
+      stopBatchPolling();
+      // งานหายไปแล้ว (เช่นเปิดโปรแกรมใหม่) อย่าจำ job เก่าไว้ให้ครูสับสน
+      forgetBatch();
+      return;
+    }
+  } catch (err) {
+    show($("manyError"), `ถามความคืบหน้าไม่สำเร็จ: ${err.message}`);
+    return;
+  }
+  renderRoster(job);
+  if (!job.running) stopBatchPolling();
+}
+
+function startBatchPolling() {
+  stopBatchPolling();
+  // 3 วินาทีพอ — งานหนึ่งคนใช้เวลาราวนาที ถามถี่กว่านี้ไม่ได้ข้อมูลใหม่เพิ่ม
+  batchTimer = setInterval(pollBatch, 3000);
+}
+
+function stopBatchPolling() {
+  if (batchTimer) clearInterval(batchTimer);
+  batchTimer = null;
+}
+
+function rememberBatch(jobId) {
+  batchJobId = jobId;
+  try {
+    window.sessionStorage.setItem(BATCH_KEY, jobId);
+  } catch (err) {
+    // โหมดส่วนตัวปิด sessionStorage — ยังตรวจต่อได้ แค่ปิดแท็บแล้วกลับมาต่อไม่ได้
+  }
+}
+
+function forgetBatch() {
+  batchJobId = null;
+  try {
+    window.sessionStorage.removeItem(BATCH_KEY);
+  } catch (err) {
+    /* ไม่เป็นไร */
+  }
+}
+
+$("startManyBtn").addEventListener("click", async () => {
+  hide($("manyError"));
+  const files = $("manyFiles").files;
+  if (!files.length) {
+    show($("manyError"), "ยังไม่ได้เลือกไฟล์");
+    return;
+  }
+  const body = new FormData();
+  for (const f of files) body.append("papers", f);
+
+  const btn = $("startManyBtn");
+  btn.disabled = true;
+  btn.textContent = "กำลังส่งไฟล์…";
+  try {
+    const res = await fetch("/api/batch/start", { method: "POST", body });
+    const job = await res.json();
+    if (handleLocked(job, "manyError")) return;
+    if (!res.ok) {
+      show($("manyError"), job.error || "เริ่มตรวจไม่สำเร็จ");
+      return;
+    }
+    rememberBatch(job.job_id);
+    renderRoster(job);
+    startBatchPolling();
+  } catch (err) {
+    show($("manyError"), `เริ่มตรวจไม่สำเร็จ: ${err.message}`);
+  } finally {
+    btn.textContent = "เริ่มตรวจทั้งห้อง";
+    btn.disabled = false;
+  }
+});
+
+$("cancelManyBtn").addEventListener("click", async () => {
+  if (!batchJobId) return;
+  // หยุดเฉพาะคนที่ยังไม่ได้ตรวจ คนที่ตรวจไปแล้วยังอยู่ในรายชื่อให้เข้าไปบันทึกได้
+  const res = await fetch(`/api/batch/${batchJobId}/cancel`, { method: "POST" });
+  const job = await res.json();
+  if (res.ok) renderRoster(job);
+});
+
+async function openBatchItem(index) {
+  hide($("manyError"));
+  try {
+    const res = await fetch(`/api/batch/${batchJobId}/item/${index}`);
+    const data = await res.json();
+    if (handleLocked(data, "manyError")) return;
+    if (!res.ok) {
+      show($("manyError"), data.error || "เปิดดูคำตอบไม่สำเร็จ");
+      return;
+    }
+    openItemIndex = index;
+    savedOnce = data.saved === true;
+    lastGrading = data;
+    renderResults(data);
+    // บันทึกไปแล้วต้องไม่ให้กดซ้ำ เพราะ /api/save ต่อแถวใหม่เสมอ ไม่ได้ทับแถวเดิม
+    $("saveBtn").hidden = savedOnce;
+    if (savedOnce) {
+      show($("saveWarn"), "คนนี้บันทึกลงชีตไปแล้ว — กดบันทึกซ้ำจะได้ 2 แถว");
+    }
+  } catch (err) {
+    show($("manyError"), `เปิดดูคำตอบไม่สำเร็จ: ${err.message}`);
+  }
+}
+
+// เปิดแท็บใหม่หรือกลับมาหลังปิดจอ — ต่อจากงานเดิมที่ยังค้างอยู่
+try {
+  const saved = window.sessionStorage.getItem(BATCH_KEY);
+  if (saved) {
+    batchJobId = saved;
+    setWay(true);
+    pollBatch();
+    startBatchPolling();
+  }
+} catch (err) {
+  /* sessionStorage ใช้ไม่ได้ ก็แค่เริ่มใหม่ */
+}

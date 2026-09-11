@@ -365,3 +365,50 @@ input.score-input.edited { border-color: var(--ochre); background: #FFFBF4; }
   color: var(--muted);
   word-break: break-all;
 }
+
+/* ---------- เลือกวิธีตรวจ (รายคน / หลายคน) ---------- */
+.ways { display: flex; gap: 12px; flex-wrap: wrap; }
+.way {
+  flex: 1 1 260px; text-align: left; cursor: pointer; font: inherit;
+  border: 1px solid var(--border); border-radius: 10px; padding: 14px; background: #FCFBF8;
+}
+.way strong { display: block; margin-bottom: 4px; color: var(--ink-dark); }
+.way em { font-style: normal; font-size: 13.5px; color: var(--muted); line-height: 1.55; display: block; }
+.way.is-on { border-color: var(--ink); border-width: 2px; background: #F1F6F4; }
+
+.rules { margin: 0 0 14px; padding-left: 20px; }
+.rules li { margin-bottom: 4px; }
+.rules code {
+  background: #EFEDE6; border-radius: 4px; padding: 1px 5px;
+  font-family: "Consolas", "Courier New", monospace; font-size: 12.5px;
+}
+
+/* ---------- รายชื่อตอนตรวจทั้งห้อง ---------- */
+.roster { width: 100%; border-collapse: collapse; margin-top: 16px; font-size: 15px; }
+.roster th, .roster td {
+  text-align: left; padding: 10px 8px; border-bottom: 1px solid var(--border); vertical-align: middle;
+}
+.roster th { font-size: 13px; color: var(--muted); font-weight: 600; }
+.roster .num { text-align: right; white-space: nowrap; }
+.roster tr.is-saved { background: #EDF5F0; }
+.roster tr.is-failed { background: #FBEDEB; }
+
+.pill {
+  display: inline-block; font-size: 12.5px; border-radius: 999px;
+  padding: 2px 10px; border: 1px solid var(--border); color: var(--muted);
+}
+.pill.wait { background: #F4F2EC; }
+.pill.run { background: #FDF3E7; border-color: var(--flag-border); color: #7A4E17; }
+.pill.done { background: #EDF5F0; border-color: #BEDCCB; color: var(--ok); }
+.pill.fail { background: #FBEDEA; border-color: #E6C0BA; color: var(--error); }
+
+.roster button {
+  font: inherit; font-size: 14px; cursor: pointer; padding: 6px 14px;
+  border: 1px solid var(--ink); border-radius: 8px; background: #fff; color: var(--ink);
+}
+.roster button:disabled { border-color: var(--border); color: var(--muted); cursor: default; }
+
+@media (max-width: 700px) {
+  .ways { flex-direction: column; }
+  .roster th:nth-child(4), .roster td:nth-child(4) { display: none; }
+}
