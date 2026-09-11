@@ -236,6 +236,9 @@ on("statusToggle", "click", () => {
 function setupDrop(dropId, inputId, onPicked) {
   const drop = $(dropId);
   const input = $(inputId);
+  // เว็บแยกเป็นหลายหน้าแล้ว ช่องใส่ไฟล์มีเฉพาะหน้าตรวจรายคน หน้าอื่นไม่มี
+  // ถ้าไม่เช็คตรงนี้ JavaScript จะโยน error ตั้งแต่โหลด แล้วทั้งหน้าใช้งานไม่ได้เลย
+  if (!drop || !input) return;
   const note = drop.querySelector(".drop-note");
   const preview = drop.querySelector("img");
 
@@ -283,13 +286,18 @@ function setupDrop(dropId, inputId, onPicked) {
 
 // PDF กับรูปแยกหน้าใช้ได้ทีละทาง — เคลียร์อีกทางให้เลยตอนเลือก จะได้ไม่ต้องให้
 // ครูไปลบเองแล้วมาเจอ error ตอนกดตรวจ (ฝั่งเซิร์ฟเวอร์ก็กันซ้ำอีกชั้นอยู่แล้ว)
+function clearPicked(dropId) {
+  const drop = $(dropId);
+  if (drop && drop.clearPicked) drop.clearPicked();
+}
+
 function clearPhotoDrops() {
-  $("drop1").clearPicked();
-  $("drop2").clearPicked();
+  clearPicked("drop1");
+  clearPicked("drop2");
 }
 
 function clearPdfDrop() {
-  $("dropPdf").clearPicked();
+  clearPicked("dropPdf");
 }
 
 setupDrop("drop1", "page1", clearPdfDrop);
