@@ -82,15 +82,33 @@ function handleLocked(data, errorBoxId) {
   return true;
 }
 
+// บันทึกทุกครั้งที่ /api/status ตอบกลับมา (สำเร็จหรือพัง) ไว้ให้เห็นบนจอตรง ๆ —
+// เคยเจอแถบเตือนค้างทั้งที่เซิร์ฟเวอร์ยืนยันว่าไม่มีปัญหา แล้วไม่มีทางรู้เลยว่า
+// "แท็บนี้" เห็นค่าอะไรจริง ๆ ระหว่างทาง log นี้ตัดปัญหานั้นทิ้งไปได้จากสกรีนช็อตเดียว
+// เก็บแค่ 3 รายการล่าสุด พอสำหรับวินิจฉัย ไม่ให้รกจอ
+const pollHistory = [];
+function recordStatusPoll(summary) {
+  const stamp = new Date().toLocaleTimeString("th-TH", { hour12: false });
+  pollHistory.unshift(`${stamp} ${summary}`);
+  pollHistory.length = Math.min(pollHistory.length, 3);
+  const el = $("pollLog");
+  el.hidden = false;
+  el.textContent = "เช็คล่าสุด: " + pollHistory.join(" | ");
+}
+
 async function loadStatus() {
   let data;
   try {
     const res = await fetch("/api/status");
     data = await res.json();
   } catch (err) {
+    recordStatusPoll(`fetch พัง (${err.message})`);
     show($("formError"), "ติดต่อเซิร์ฟเวอร์ไม่ได้ — หน้าต่างสีดำที่รันโปรแกรมอยู่ปิดไปหรือเปล่า");
     return;
   }
+  recordStatusPoll(
+    `stale=${data.stale_server} build=${(data.build || "-").slice(0, 6)} locked=${data.locked === true}`
+  );
 
   if (handleLocked(data, "formError")) return;
 
