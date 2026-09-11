@@ -603,6 +603,8 @@ function renderRoster(job) {
     problemBox.appendChild(div);
   });
 
+  refreshSaveAllButton(job);
+
   const body = $("rosterRows");
   body.innerHTML = "";
   job.items.forEach((item) => {
@@ -748,6 +750,8 @@ async function openBatchItem(index) {
       return;
     }
     openItemIndex = index;
+    // บอกให้ชัดว่าปุ่มนี้บันทึกเฉพาะคนที่เปิดอยู่ ไม่ใช่ทั้งห้อง
+    $("saveBtn").textContent = `บันทึกเฉพาะ ${data.student.name || "คนนี้"}`;
     savedOnce = data.saved === true;
     lastGrading = data;
     renderResults(data);
@@ -773,3 +777,119 @@ try {
 } catch (err) {
   /* sessionStorage ใช้ไม่ได้ ก็แค่เริ่มใหม่ */
 }
+
+// ---------- บันทึกทั้งหมดในครั้งเดียว ----------
+//
+// วนเรียก /api/save ทีละคนด้วยเส้นทางเดียวกับตอนบันทึกคนเดียว ไม่ทำ endpoint ใหม่
+// เพราะสูตรคิดสถานะ (ครูตรวจแล้ว / ต้องตรวจสอบ / ผ่านอัตโนมัติ) อยู่ที่เดียวใน /api/save
+// ถ้าทำทางลัดฝั่งเซิร์ฟเวอร์อีกเส้น วันหนึ่งจะแก้เกณฑ์ที่เดียวแล้วอีกเส้นไม่ตาม
+// แล้วคะแนนที่บันทึกด้วยสองวิธีจะมีสถานะคนละแบบโดยไม่มีอะไรฟ้อง
+//
+// คนที่บันทึกไปแล้วถูกข้าม เพราะ /api/save ต่อแถวใหม่เสมอ ไม่ได้ทับแถวเดิม
+// กดซ้ำจึงต้องไม่ทำให้ได้ 2 แถวของคนเดียวกัน
+
+// ต้องกดสองครั้งถึงจะบันทึกจริง — ตั้งใจให้เป็นแบบนี้เพราะบันทึกทั้งหมดคือการข้ามขั้น
+// "เข้าไปดูคำตอบทีละคน" ซึ่งเป็นขั้นที่กันคะแนนผิดจาก OCR อ่านลายมือพลาด
+let saveAllArmed = false;
+
+function saveableItems(job) {
+  return (job.items || []).filter((i) => i.status === "เสร็จ" && !i.saved);
+}
+
+function refreshSaveAllButton(job) {
+  const pending = saveableItems(job);
+  const btn = $("saveAllBtn");
+  btn.hidden = pending.length === 0;
+  if (pending.length === 0) {
+    saveAllArmed = false;
+    hide($("saveAllWarn"));
+    return;
+  }
+  const needReview = pending.filter((i) => i.needs_review).length;
+  if (saveAllArmed) {
+    btn.textContent = `ยืนยันบันทึก ${pending.length} คน`;
+    show(
+      $("saveAllWarn"),
+      needReview > 0
+        ? `ใน ${pending.length} คนนี้ มี ${needReview} คนที่ยังมีข้อที่ระบบไม่มั่นใจ ` +
+            "และยังไม่ได้เปิดดูคำตอบ — กดยืนยันแล้วคะแนนจะลงชีตตามที่ระบบตรวจมาเลย " +
+            "กดปุ่มอื่นหรือรอสักครู่เพื่อยกเลิก"
+        : `จะบันทึก ${pending.length} คนลงชีตตามคะแนนที่ระบบตรวจมา — กดยืนยันอีกครั้ง`
+    );
+  } else {
+    btn.textContent = `บันทึกทั้งหมด (${pending.length} คน)`;
+    hide($("saveAllWarn"));
+  }
+}
+
+async function saveOneFromRoster(index) {
+  const detailRes = await fetch(`/api/batch/${batchJobId}/item/${index}`);
+  const detail = await detailRes.json();
+  if (!detailRes.ok) throw new Error(detail.error || "เปิดคำตอบไม่สำเร็จ");
+
+  const res = await fetch("/api/save", {
+    method: "POST",
+    headers: { "Content-Type": "application/json" },
+    body: JSON.stringify({
+      student: detail.student,
+      // ส่งผลตามที่ระบบตรวจมาทั้งชุด ไม่มีการแก้จากครู (ยังไม่ได้เปิดดู)
+      results: detail.results,
+      job_id: batchJobId,
+      item_index: index,
+    }),
+  });
+  const saved = await res.json();
+  if (!res.ok) throw new Error(saved.error || "บันทึกไม่สำเร็จ");
+  return saved;
+}
+
+$("saveAllBtn").addEventListener("click", async () => {
+  hide($("saveAllOk"));
+  hide($("manyError"));
+  if (!batchJobId) return;
+
+  const statusRes = await fetch(`/api/batch/${batchJobId}`);
+  const job = await statusRes.json();
+  if (handleLocked(job, "manyError")) return;
+  if (!statusRes.ok) {
+    show($("manyError"), job.error || "อ่านรายชื่อไม่สำเร็จ");
+    return;
+  }
+  const pending = saveableItems(job);
+  if (pending.length === 0) {
+    renderRoster(job);
+    return;
+  }
+
+  if (!saveAllArmed) {
+    saveAllArmed = true;
+    refreshSaveAllButton(job);
+    return;
+  }
+  saveAllArmed = false;
+
+  const btn = $("saveAllBtn");
+  btn.disabled = true;
+  const failures = [];
+  let done = 0;
+  for (const item of pending) {
+    btn.textContent = `กำลังบันทึก ${done + 1}/${pending.length}…`;
+    try {
+      await saveOneFromRoster(item.index);
+      done += 1;
+    } catch (err) {
+      // คนหนึ่งบันทึกไม่ผ่านต้องไม่ทำให้ที่เหลือหยุด ครูจะได้ไม่ต้องเริ่มใหม่ทั้งห้อง
+      failures.push(`${item.student}: ${err.message}`);
+    }
+  }
+  btn.disabled = false;
+
+  const after = await (await fetch(`/api/batch/${batchJobId}`)).json();
+  renderRoster(after);
+  if (failures.length) {
+    show($("manyError"), `บันทึกไม่สำเร็จ ${failures.length} คน — ${failures.join(" · ")}`);
+  }
+  if (done > 0) {
+    show($("saveAllOk"), `บันทึกลงชีตแล้ว ${done} คน`);
+  }
+});

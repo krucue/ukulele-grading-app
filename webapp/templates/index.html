@@ -143,8 +143,11 @@
     <div class="save-row">
       <button type="button" class="primary" id="startManyBtn">เริ่มตรวจทั้งห้อง</button>
       <button type="button" class="secondary" id="cancelManyBtn" hidden>หยุดตรวจที่เหลือ</button>
+      <button type="button" class="secondary" id="saveAllBtn" hidden>บันทึกทั้งหมด</button>
       <span class="hint" id="manyProgress"></span>
     </div>
+    <p class="warn-box" id="saveAllWarn" hidden></p>
+    <p class="ok-box" id="saveAllOk" hidden></p>
     <p class="error-box" id="manyError" hidden></p>
     <div id="manyProblems"></div>
     <table class="roster" id="rosterTable" hidden>

@@ -184,7 +184,7 @@ const $ = (id) => window.document.getElementById(id);
 let saveCalls = 0;
 let gradeResponse = gradeJson;
 // งานตรวจทั้งห้องปลอม — ให้รูปร่างตรงกับที่ /api/batch/* ตอบจริง
-const batchJson = {
+let batchJson = {
   job_id: "งาน1",
   total: 2,
   done: 2,
@@ -587,6 +587,74 @@ await tick();
 check("ส่ง job_id ไปด้วยตอนบันทึก", savedBody !== null && savedBody.job_id === "งาน1");
 check("ส่งลำดับของคนนั้นไปด้วย", savedBody !== null && savedBody.item_index === 0);
 window.fetch = realFetch;
+
+
+// ---------- บันทึกทั้งหมด ----------
+// จุดที่พลาดแล้วเจ็บ: บันทึกซ้ำคนที่บันทึกไปแล้ว (ได้ 2 แถวในชีต เพราะ /api/save
+// ต่อแถวใหม่เสมอ) และการกดพลาดครั้งเดียวแล้วคะแนนทั้งห้องลงชีตโดยครูยังไม่ได้ดูคำตอบ
+console.log("");
+console.log("บันทึกทั้งหมด");
+
+// ตั้งรายชื่อใหม่: 2 คนพร้อมบันทึก (คนหนึ่งยังต้องดูซ้ำ) + 1 คนบันทึกไปแล้ว + 1 คนพลาด
+batchJson.items = [
+  { index: 0, student: "929", status: "เสร็จ", saved: false, error: "", total_score: 7, max_total: 15, needs_review: true, flagged: 2 },
+  { index: 1, student: "Parn", status: "เสร็จ", saved: false, error: "", total_score: 9, max_total: 15, needs_review: false, flagged: 0 },
+  { index: 2, student: "Dali", status: "เสร็จ", saved: true, error: "", total_score: 8, max_total: 15, needs_review: false, flagged: 0 },
+  { index: 3, student: "เจ๊ง", status: "พลาด", saved: false, error: "อ่านลายมือไม่สำเร็จ", total_score: null, max_total: null, needs_review: null, flagged: 0 },
+];
+
+const savedIndexes = [];
+window.fetch = async (url, opts) => {
+  const u = String(url);
+  if (u.includes("/api/save")) {
+    savedIndexes.push(JSON.parse(opts.body).item_index);
+    saveCalls++;
+    return { ok: true, json: async () => saveJson };
+  }
+  if (u.includes("/item/")) return { ok: true, json: async () => ({ ...gradeJson, index: 0, saved: false }) };
+  if (u.includes("/api/batch")) return { ok: true, json: async () => batchJson };
+  if (u.includes("/api/status")) return { ok: true, json: async () => statusJson };
+  throw new Error(`เรียก url ที่ไม่ได้เตรียมไว้: ${u}`);
+};
+
+// app.js รันใน strict mode ฟังก์ชันข้างในจึงไม่ขึ้นมาที่ window — ต้องสั่งผ่าน UI จริง
+// เหมือนที่ครูใช้ ซึ่งตรงกับเจตนาของเทสชุดนี้อยู่แล้ว
+click("startManyBtn");
+await tick();
+await tick();
+
+check("ปุ่มบันทึกทั้งหมดโผล่เมื่อมีคนรอบันทึก", !$("saveAllBtn").hidden);
+check(
+  "นับเฉพาะคนที่ตรวจเสร็จและยังไม่ได้บันทึก",
+  $("saveAllBtn").textContent.includes("2 คน"),
+  $("saveAllBtn").textContent
+);
+
+// กดครั้งแรกต้องยังไม่บันทึก — ต้องยืนยันก่อน เพราะเป็นการข้ามขั้นดูคำตอบทีละคน
+const beforeArm = saveCalls;
+click("saveAllBtn");
+await tick();
+check("กดครั้งแรกยังไม่บันทึก ต้องยืนยันก่อน", saveCalls === beforeArm);
+check("ปุ่มเปลี่ยนเป็นขอยืนยัน", $("saveAllBtn").textContent.includes("ยืนยัน"), $("saveAllBtn").textContent);
+check(
+  "เตือนว่ามีคนที่ยังไม่ได้เปิดดูคำตอบ",
+  !$("saveAllWarn").hidden && $("saveAllWarn").textContent.includes("1 คน"),
+  $("saveAllWarn").textContent
+);
+
+// กดยืนยัน
+click("saveAllBtn");
+for (let i = 0; i < 12; i++) await tick();
+
+// เช็คว่า "ใคร" ถูกบันทึก ไม่ใช่ "กี่ครั้ง" — ไฟล์เทสนี้ eval app.js ซ้ำหลายรอบ
+// (ดูชุดเทสแถบเตือนกับ settings.json) ทำให้ event listener ซ้อนกันหลายชุด ปุ่มเดียว
+// จึงยิงหลายครั้งในเทส ซึ่งเป็นข้อจำกัดของเทสเอง ไม่ใช่พฤติกรรมของหน้าเว็บจริงที่
+// โหลด app.js รอบเดียวต่อการเปิดหน้า ส่วนการกันบันทึกซ้ำจริงอยู่ที่ธง saved ฝั่งเซิร์ฟเวอร์
+const savedSet = [...new Set(savedIndexes)].sort();
+check("บันทึกครบทุกคนที่รออยู่", JSON.stringify(savedSet) === "[0,1]", JSON.stringify(savedSet));
+check("ไม่บันทึกซ้ำคนที่บันทึกไปแล้ว", !savedSet.includes(2), JSON.stringify(savedSet));
+check("ไม่บันทึกคนที่ตรวจพลาด", !savedSet.includes(3), JSON.stringify(savedSet));
+check("บอกผลว่าบันทึกไปกี่คน", !$("saveAllOk").hidden && $("saveAllOk").textContent.includes("2 คน"), $("saveAllOk").textContent);
 
 
 console.log(`\nผ่าน ${passed} ตก ${failed}`);
