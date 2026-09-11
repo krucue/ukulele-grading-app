@@ -386,3 +386,14 @@ input.score-input.edited { border-color: var(--ochre); background: #FFFBF4; }
   font-family: "Consolas", "Courier New", monospace;
   color: #9FB8AE;
 }
+
+/* log ค่าที่หน้าเว็บได้รับจาก /api/status จริง ๆ — อยู่ในแผง "สถานะระบบ" ที่พับไว้
+   ไม่ใช่ข้อมูลที่ครูต้องอ่านทุกวัน แต่เป็นตัวที่ชี้เป้าบั๊กแถบเตือนค้างได้ในที่สุด
+   จึงเก็บไว้ ไม่ลบทิ้ง */
+.poll-log {
+  margin: 10px 0 0;
+  font-family: "Consolas", "Courier New", monospace;
+  font-size: 11.5px;
+  color: var(--muted);
+  word-break: break-all;
+}
