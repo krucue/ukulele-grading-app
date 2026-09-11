@@ -16,7 +16,6 @@ from __future__ import annotations
 import contextlib
 import hashlib
 import hmac
-import json
 import os
 import secrets
 import shutil
@@ -30,7 +29,6 @@ from grading.align import imread_unicode
 from grading.config_loader import ExamConfig, load_config
 from grading.heic import HEIC_SUFFIXES, HeicError, convert_to_jpeg, heic_supported, is_heic
 from grading.llm_grader import MockSemanticGrader
-from grading.ocr import MockOcrProvider, OcrResult
 from grading.pdf_pages import PdfExtractError, extract_scanned_pages
 from grading.pipeline import (
     SubmissionResult,
@@ -270,22 +268,16 @@ def _crops_from_photos(
     return crops, warnings
 
 
-def _mock_ocr_results(config: ExamConfig) -> dict[str, OcrResult]:
-    """คำตอบจำลองสำหรับโหมดลองใช้งาน — อ่านจากไฟล์เดียวกับที่ demo/run_demo.py ใช้"""
-    canned_path = PROJECT_ROOT / "demo" / "mock_ocr_answers.json"
-    try:
-        canned = json.loads(canned_path.read_text(encoding="utf-8"))
-    except (OSError, json.JSONDecodeError) as exc:
-        raise GradingError(f"อ่านไฟล์คำตอบจำลองไม่สำเร็จ ({canned_path}): {exc}") from exc
-    question_ids = [q.question_id for q in config.questions]
-    return MockOcrProvider(canned).extract(image_path="(mock)", question_ids=question_ids)
+def _build_llm_grader(settings: AppSettings) -> tuple[object, str, list[str]]:
+    """คืน (grader, ชื่อโหมด, คำเตือน) สำหรับข้อบรรยาย
 
-
-def _build_llm_grader(settings: AppSettings, want_real: bool) -> tuple[object, str, list[str]]:
-    """คืน (grader, ชื่อโหมด, คำเตือน) — ถอยไปใช้ mock อัตโนมัติถ้ายังไม่ได้ตั้งคีย์"""
+    ถอยไปใช้ mock พร้อมคำเตือนตัวใหญ่เมื่อต่อ Claude ไม่ได้ ไม่ใช่ล้มทั้งใบ — เพราะกว่าจะ
+    มาถึงขั้นนี้ อ่านลายมือครบ 12 ข้อไปแล้ว (ใช้เวลาเป็นนาที) ทิ้งทั้งหมดเพราะข้อบรรยาย
+    ข้อเดียวไม่คุ้ม แต่คะแนนข้อนั้นเชื่อไม่ได้ ต้องบอกให้ชัด
+    """
     warnings: list[str] = []
     route = settings.claude_route
-    if want_real and route is not None:
+    if route is not None:
         try:
             if route == "api":
                 from grading.llm_grader import ClaudeSemanticGrader
@@ -295,14 +287,11 @@ def _build_llm_grader(settings: AppSettings, want_real: bool) -> tuple[object, s
 
             return ClaudeCliSemanticGrader(), "claude-cli", warnings
         # จับกว้าง ๆ ตั้งใจ — คีย์ผิด/เน็ตหลุด/ไลบรารีไม่ครบ ไม่ควรทำให้ตรวจทั้งชุดล่ม
-        # ถอยไปใช้ mock แล้วเตือนครูดีกว่า แต่ต้องเตือนให้เห็นชัดว่าถอยแล้ว
         except Exception as exc:  # noqa: BLE001
-            warnings.append(f"ต่อ Claude ไม่สำเร็จ ใช้โหมดจำลองแทนสำหรับข้อบรรยาย — {exc}")
-    elif want_real:
-        warnings.append(
-            "ยังไม่มีทั้ง anthropic_api_key และคำสั่ง claude ในเครื่อง — ข้อบรรยายใช้โหมดจำลองไปก่อน "
-            "ห้ามใช้คะแนนข้อบรรยายนี้ตัดสินจริง"
-        )
+            warnings.append(
+                f"ต่อ Claude ไม่สำเร็จ ข้อบรรยายใช้โหมดจำลองแทน — {exc} "
+                "ห้ามใช้คะแนนข้อบรรยายนี้ตัดสินจริง ต้องให้คะแนนเอง"
+            )
     return MockSemanticGrader(), "mock", warnings
 
 
@@ -324,8 +313,15 @@ def _result_to_dict(result: ScoreResult, config: ExamConfig) -> dict:
     }
 
 
-def create_app(settings: AppSettings | None = None) -> Flask:
+def create_app(settings: AppSettings | None = None, ocr_override=None) -> Flask:
+    """ocr_override มีไว้ให้เทสเท่านั้น: callable(config, crops) -> dict[question_id, OcrResult]
+
+    ตั้งได้จากตอนสร้างแอปเท่านั้น ไม่มีทางเปิดจาก request — ต่างจาก "โหมดลองใช้งาน" เดิม
+    ที่เป็นปุ่มบนหน้าจอ ครูกดเองได้ แล้วเผลอเอาคะแนนจากคำตอบตัวอย่างไปใช้จริงมาแล้ว
+    ตอนนี้หน้าเว็บมีแต่ตรวจจริงทางเดียว ส่วนเทสยังเดินทั้ง pipeline ได้โดยไม่ต้องเรียก Claude
+    """
     app = Flask(__name__)
+    app.config["OCR_OVERRIDE"] = ocr_override
     app.config["MAX_CONTENT_LENGTH"] = MAX_UPLOAD_BYTES
     # ห้ามแคชอะไรทั้งนั้น — โปรแกรมนี้รันในเครื่องครูเอง ไม่มีปัญหาเรื่องความเร็ว
     # แต่มีปัญหาใหญ่เรื่องหน้าเก่าค้าง: เวลาอัปเดตโปรแกรมแล้วเปิดใหม่ เบราว์เซอร์
@@ -481,117 +477,90 @@ def create_app(settings: AppSettings | None = None) -> Flask:
             }
         )
 
-    @app.route("/api/grade", methods=["POST"])
-    def api_grade():
+    def _grade_pages(
+        saved_paths: dict[int, str],
+        from_scan: bool,
+        student_info: dict,
+        config: ExamConfig,
+        warnings: list[str],
+    ) -> dict:
+        """ตรวจกระดาษ 1 ใบจากไฟล์ภาพที่เตรียมไว้แล้ว คืน payload เดียวกับที่ /api/grade ตอบ
+
+        แยกเป็นฟังก์ชันกลางเพราะโหมดตรวจหลายคนเดินเส้นทางนี้ซ้ำทีละใบ ถ้าปล่อยให้สองโหมด
+        มีโค้ดตรวจคนละชุด วันหนึ่งจะแก้เกณฑ์ที่เดียวแล้วอีกโหมดไม่ตาม คะแนนของนักเรียน
+        สองกลุ่มจะคิดคนละแบบโดยไม่มีอะไรฟ้อง
+
+        ไฟล์ที่ส่งเข้ามาเป็นของผู้เรียกทั้งหมด ฟังก์ชันนี้ไม่ลบให้ — ผู้เรียกต้องลบใน finally
+        """
         settings_obj = current_settings()
-        config = load_exam_config()
-        mode = request.form.get("mode", "demo")
-        if mode not in ("demo", "real"):
-            raise GradingError(f"โหมดไม่ถูกต้อง: {mode}")
+        route = settings_obj.claude_route
 
-        warnings: list[str] = []
-        saved_paths: dict[int, str] = {}
-        from_scan = False
-        # โฟลเดอร์ของ request นี้โดยเฉพาะ ไม่ใช่ไฟล์ชื่อตายตัวใน temp กลาง —
-        # ชื่อตายตัวจะถูกทับกันเองถ้าครูกดตรวจซ้อนกันสองแท็บ แล้วคะแนนจะมาจาก
-        # กระดาษคนละใบโดยไม่มีอะไรฟ้อง ทั้งโฟลเดอร์ถูกลบทิ้งใน finally ทีเดียว
-        #
-        # ชื่อโฟลเดอร์เป็นภาษาไทยโดยตั้งใจ ไม่ใช่ตั้งเล่น: ครูที่ตั้งชื่อผู้ใช้ Windows
-        # เป็นภาษาไทยจะได้ path ที่มีอักษรไทยอยู่แล้วทุกครั้ง (temp อยู่ใต้ชื่อผู้ใช้)
-        # การใช้ชื่อไทยตรงนี้ทำให้ทุกเครื่องเดินผ่านทางเดียวกัน ถ้าวันหนึ่งมีใครใส่โค้ด
-        # ที่อ่าน path ไทยไม่ได้กลับเข้ามา (เช่น cv2.imread ตรง ๆ) จะพังให้เห็นทันที
-        # ทั้งใน CI และบนเครื่องทุกคน แทนที่จะพังเงียบ ๆ เฉพาะเครื่องครูที่ใช้ชื่อไทย
-        work_dir = tempfile.mkdtemp(prefix="ตรวจข้อสอบ_")
-        try:
-            for page_number in (1, 2):
-                uploaded = request.files.get(f"page{page_number}")
-                if uploaded is not None and uploaded.filename:
-                    saved_paths[page_number] = _save_upload(uploaded, page_number, work_dir)
+        if len(saved_paths) < 2:
+            raise GradingError(
+                "ต้องมีกระดาษคำตอบครบทั้ง 2 หน้า "
+                "— อัปโหลดไฟล์ PDF ที่สแกนมา หรือรูปให้ครบทั้ง 2 หน้า"
+            )
 
-            pdf_upload = request.files.get("pdf")
-            if pdf_upload is not None and pdf_upload.filename:
-                # รับได้ทางเดียวเท่านั้น ไม่งั้นต้องเดาว่าครูตั้งใจใช้อันไหน
-                # แล้วถ้าเดาผิดคะแนนจะมาจากกระดาษคนละใบโดยไม่มีอะไรฟ้อง
-                if saved_paths:
-                    raise GradingError(
-                        "เลือกอย่างใดอย่างหนึ่ง: อัปโหลดไฟล์ PDF ที่สแกนมาไฟล์เดียว "
-                        "หรืออัปโหลดรูปแยกหน้า 1 / หน้า 2 — ใส่มาพร้อมกันทั้งสองแบบไม่ได้"
-                    )
-                pdf_path = _save_pdf_upload(pdf_upload, work_dir)
-                saved_paths, pdf_warnings = _pages_from_pdf(pdf_path, work_dir)
-                warnings.extend(pdf_warnings)
-                from_scan = True
+        # ตัวช่วยเทสเท่านั้น ตั้งได้จากตอนสร้างแอปเท่านั้น ไม่มีทางเปิดจาก request —
+        # เดิมใช้ "โหมดลองใช้งาน" ทำหน้าที่นี้ ซึ่งครูเห็นและกดเองได้ แล้วเผลอเอาคะแนน
+        # จากคำตอบตัวอย่างไปใช้จริงมาแล้ว
+        ocr_override = app.config.get("OCR_OVERRIDE")
 
-            if mode == "real" and len(saved_paths) < 2:
+        if not settings_obj.ocr_ready and ocr_override is None:
+            # เช็คก่อนลงมือดัด/ตัดภาพ — ถูกกว่า และตรงสาเหตุกว่าการไปบอกครูให้สแกนใหม่
+            # ทั้งที่ปัญหาจริงคือยังไม่ได้ตั้งค่า
+            raise GradingError(
+                "ตรวจข้อสอบไม่ได้ ต้องมีอย่างใดอย่างหนึ่ง: ติดตั้ง Claude Code แล้วล็อกอินไว้ "
+                "(คำสั่ง claude) หรือตั้ง anthropic_api_key ใน settings.json"
+            )
+
+        if ocr_override is not None:
+            # ลัดตั้งแต่ก่อนดัดภาพ เพราะตรวจจริงบังคับว่าต้องจับคู่ใบอ้างอิงให้สำเร็จ
+            # (strict=True) ซึ่งภาพจำลองในเทสทำไม่ได้อยู่แล้ว ส่วนขั้นดัด/ตัดภาพมีเทส
+            # ของตัวเองอยู่แล้วใน test_register.py กับ test_regions_and_pipeline.py
+            ocr_results = ocr_override(config)
+            ocr_mode = "test"
+        else:
+            crops, align_warnings = _crops_from_photos(
+                saved_paths, regions_path(), from_scan=from_scan, strict=True
+            )
+            warnings.extend(align_warnings)
+
+            missing = [q.question_id for q in config.questions if q.question_id not in crops]
+            if missing:
+                joined = ", ".join(missing)
                 raise GradingError(
-                    "โหมดตรวจจริงต้องมีกระดาษคำตอบครบทั้ง 2 หน้า "
-                    "— อัปโหลดไฟล์ PDF ที่สแกนมา หรือรูปให้ครบทั้ง 2 หน้า"
+                    f"ไม่มีพิกัดตัดภาพสำหรับข้อ {joined} — ตรวจ config/regions.json"
                 )
 
-            if mode == "real" and not settings_obj.ocr_ready:
-                # เช็คคีย์ก่อนลงมือดัด/ตัดภาพ — ถูกกว่า และตรงสาเหตุกว่าการไปบอกครู
-                # ให้สแกนกระดาษใหม่ทั้งที่ปัญหาจริงคือยังไม่ได้ตั้งค่า
-                raise GradingError(
-                    "โหมดตรวจจริงต้องมีอย่างใดอย่างหนึ่ง: ตั้ง anthropic_api_key ใน settings.json "
-                    "หรือติดตั้ง Claude Code แล้วล็อกอินไว้ (คำสั่ง claude) "
-                    "— ระหว่างนี้เลือกโหมดลองใช้งานได้"
-                )
+            try:
+                if route == "api":
+                    from grading.ocr import ClaudeVisionOcrProvider
 
-            crops = {}
-            if saved_paths:
-                crops, align_warnings = _crops_from_photos(
-                    saved_paths, regions_path(), from_scan=from_scan, strict=(mode == "real")
-                )
-                warnings.extend(align_warnings)
+                    provider = ClaudeVisionOcrProvider(model=settings_obj.claude_model)
+                else:
+                    from grading.ocr import ClaudeCliOcrProvider
 
-            if mode == "real":
-                missing = [q.question_id for q in config.questions if q.question_id not in crops]
-                if missing:
-                    joined = ", ".join(missing)
-                    raise GradingError(
-                        f"ไม่มีพิกัดตัดภาพสำหรับข้อ {joined} — ตรวจ config/regions.json"
+                    # ส่งลำดับข้อไปด้วย เพราะตัวนี้อ่านทั้ง 12 ข้อจากภาพแผ่นเดียว
+                    # ต้องรู้ว่าป้ายเลขข้อบนแผ่นเรียงอย่างไรจึงจับคำตอบกลับเข้าข้อได้ถูก
+                    provider = ClaudeCliOcrProvider(
+                        order=[q.question_id for q in config.questions]
                     )
-                route = settings_obj.claude_route
-                try:
-                    if route == "api":
-                        from grading.ocr import ClaudeVisionOcrProvider
-
-                        provider = ClaudeVisionOcrProvider(model=settings_obj.claude_model)
-                    else:
-                        from grading.ocr import ClaudeCliOcrProvider
-
-                        # ส่งลำดับข้อไปด้วย เพราะตัวนี้อ่านทั้ง 12 ข้อจากภาพแผ่นเดียว
-                        # ต้องรู้ว่าป้ายเลขข้อบนแผ่นเรียงอย่างไรจึงจับคำตอบกลับเข้าข้อได้ถูก
-                        provider = ClaudeCliOcrProvider(
-                            order=[q.question_id for q in config.questions]
-                        )
-                    ocr_results = provider.extract_from_crops(crops)
-                # จับกว้าง ๆ ตั้งใจ — คีย์ผิด/เน็ตหลุด/ยังไม่ได้ pip install anthropic/CLI ล็อกเอาต์
-                # ครูควรเห็นข้อความไทยที่บอกว่าต้องไปแก้อะไร ไม่ใช่ traceback ดิบ
-                except Exception as exc:
-                    raise GradingError(f"อ่านลายมือด้วย Claude ไม่สำเร็จ: {exc}") from exc
-                ocr_mode = "claude" if route == "api" else "claude-cli"
-            else:
-                ocr_results = _mock_ocr_results(config)
-                ocr_mode = "mock"
-                warnings.append(
-                    "โหมดลองใช้งาน: คำตอบมาจากไฟล์ตัวอย่าง ไม่ได้อ่านจากรูปจริง "
-                    "ใช้ดูหน้าตาผลลัพธ์เท่านั้น ห้ามนำคะแนนไปใช้"
-                )
-        finally:
-            # ลบทั้งโฟลเดอร์ — PDF ต้นทาง รูปที่แตกออกมา และภาพที่ align แล้ว
-            # ภาพกระดาษคำตอบมีชื่อและลายมือนักเรียน ห้ามค้างอยู่ใน temp
-            shutil.rmtree(work_dir, ignore_errors=True)
+                ocr_results = provider.extract_from_crops(crops)
+            # จับกว้าง ๆ ตั้งใจ — คีย์ผิด/เน็ตหลุด/ยังไม่ได้ pip install anthropic/CLI ล็อกเอาต์
+            # ครูควรเห็นข้อความไทยที่บอกว่าต้องไปแก้อะไร ไม่ใช่ traceback ดิบ
+            except Exception as exc:
+                raise GradingError(f"อ่านลายมือด้วย Claude ไม่สำเร็จ: {exc}") from exc
+            ocr_mode = "claude" if route == "api" else "claude-cli"
 
         # ให้ Claude ตัดสินความใกล้เคียงของทุกข้อในการเรียกครั้งเดียว แล้วส่งเข้า pipeline
         # เป็น prefilled percent — ขั้นคะแนนกับการตั้งธงยังเป็นของระบบตามเกณฑ์ในเฉลย
         #
         # ทำเพราะข้อสอบชุดนี้แจกทั้งฉบับไทยและอังกฤษ การวัดความใกล้เคียงระดับตัวอักษร
-        # ให้ 0 กับคำตอบที่ถูกต้องแต่คนละภาษากับเฉลย (วัดจริง: "Play openly, no pressing"
-        # ตรงเฉลย "ดีดสายเปล่า ไม่ต้องกด" เป๊ะ แต่ได้ความใกล้เคียง 3%)
+        # ให้ 0 กับคำตอบที่ถูกต้องแต่คนละภาษากับเฉลย (วัดจริง: คำตอบอังกฤษที่ตรงเฉลยเป๊ะ
+        # ได้ความใกล้เคียงแค่ 3%)
         prefilled: dict[str, tuple[float, str]] = {}
-        route = settings_obj.claude_route
-        if mode == "real" and route is not None:
+        if ocr_override is None and route is not None:
             try:
                 from grading.llm_grader import (
                     ClaudeApiRunner,
@@ -621,35 +590,83 @@ def create_app(settings: AppSettings | None = None) -> Flask:
             q.scoring_method == "llm_semantic" and q.question_id not in prefilled
             for q in config.questions
         )
-        if needs_llm:
-            llm_grader, llm_mode, llm_warnings = _build_llm_grader(
-                settings_obj, want_real=(mode == "real")
-            )
+        if needs_llm and ocr_override is None:
+            llm_grader, llm_mode, llm_warnings = _build_llm_grader(settings_obj)
             warnings.extend(llm_warnings)
         else:
-            llm_grader = MockSemanticGrader()   # ไม่ถูกเรียกใช้ เพราะมี prefilled ครบแล้ว
-            llm_mode = ("claude" if route == "api" else "claude-cli") if prefilled else "mock"
+            llm_grader = MockSemanticGrader()
+            if ocr_override is not None:
+                llm_mode = "test"
+            else:
+                llm_mode = ("claude" if route == "api" else "claude-cli") if prefilled else "mock"
 
-        student_info = {
-            "name": request.form.get("student_name", "").strip(),
-            "no": request.form.get("student_no", "").strip(),
-            "class": request.form.get("student_class", "").strip(),
-        }
         submission = grade_submission(
             student_info, ocr_results, config, llm_grader=llm_grader, prefilled=prefilled
         )
 
-        return jsonify(
-            {
-                "student": student_info,
-                "total_score": submission.total_score,
-                "max_total": submission.max_total,
-                "needs_review": submission.needs_review,
-                "mode": {"ocr": ocr_mode, "llm": llm_mode, "requested": mode},
-                "warnings": warnings,
-                "results": [_result_to_dict(r, config) for r in submission.results],
+        return {
+            "student": student_info,
+            "total_score": submission.total_score,
+            "max_total": submission.max_total,
+            "needs_review": submission.needs_review,
+            "mode": {"ocr": ocr_mode, "llm": llm_mode},
+            "warnings": warnings,
+            "results": [_result_to_dict(r, config) for r in submission.results],
+        }
+
+    def _pages_from_request(work_dir: str, warnings: list[str]) -> tuple[dict[int, str], bool]:
+        """รับไฟล์ที่ครูอัปโหลดมาใน request แล้วคืน (path ของแต่ละหน้า, มาจากไฟล์สแกนไหม)"""
+        saved_paths: dict[int, str] = {}
+        for page_number in (1, 2):
+            uploaded = request.files.get(f"page{page_number}")
+            if uploaded is not None and uploaded.filename:
+                saved_paths[page_number] = _save_upload(uploaded, page_number, work_dir)
+
+        pdf_upload = request.files.get("pdf")
+        if pdf_upload is None or not pdf_upload.filename:
+            return saved_paths, False
+
+        # รับได้ทางเดียวเท่านั้น ไม่งั้นต้องเดาว่าครูตั้งใจใช้อันไหน
+        # แล้วถ้าเดาผิดคะแนนจะมาจากกระดาษคนละใบโดยไม่มีอะไรฟ้อง
+        if saved_paths:
+            raise GradingError(
+                "เลือกอย่างใดอย่างหนึ่ง: อัปโหลดไฟล์ PDF ที่สแกนมาไฟล์เดียว "
+                "หรืออัปโหลดรูปแยกหน้า 1 / หน้า 2 — ใส่มาพร้อมกันทั้งสองแบบไม่ได้"
+            )
+        pdf_path = _save_pdf_upload(pdf_upload, work_dir)
+        saved_paths, pdf_warnings = _pages_from_pdf(pdf_path, work_dir)
+        warnings.extend(pdf_warnings)
+        return saved_paths, True
+
+    @app.route("/api/grade", methods=["POST"])
+    def api_grade():
+        config = load_exam_config()
+        warnings: list[str] = []
+
+        # โฟลเดอร์ของ request นี้โดยเฉพาะ ไม่ใช่ไฟล์ชื่อตายตัวใน temp กลาง —
+        # ชื่อตายตัวจะถูกทับกันเองถ้าครูกดตรวจซ้อนกันสองแท็บ แล้วคะแนนจะมาจาก
+        # กระดาษคนละใบโดยไม่มีอะไรฟ้อง ทั้งโฟลเดอร์ถูกลบทิ้งใน finally ทีเดียว
+        #
+        # ชื่อโฟลเดอร์เป็นภาษาไทยโดยตั้งใจ ไม่ใช่ตั้งเล่น: ครูที่ตั้งชื่อผู้ใช้ Windows
+        # เป็นภาษาไทยจะได้ path ที่มีอักษรไทยอยู่แล้วทุกครั้ง (temp อยู่ใต้ชื่อผู้ใช้)
+        # การใช้ชื่อไทยตรงนี้ทำให้ทุกเครื่องเดินผ่านทางเดียวกัน ถ้าวันหนึ่งมีใครใส่โค้ด
+        # ที่อ่าน path ไทยไม่ได้กลับเข้ามา (เช่น cv2.imread ตรง ๆ) จะพังให้เห็นทันที
+        # ทั้งใน CI และบนเครื่องทุกคน แทนที่จะพังเงียบ ๆ เฉพาะเครื่องครูที่ใช้ชื่อไทย
+        work_dir = tempfile.mkdtemp(prefix="ตรวจข้อสอบ_")
+        try:
+            saved_paths, from_scan = _pages_from_request(work_dir, warnings)
+            student_info = {
+                "name": request.form.get("student_name", "").strip(),
+                "no": request.form.get("student_no", "").strip(),
+                "class": request.form.get("student_class", "").strip(),
             }
-        )
+            payload = _grade_pages(saved_paths, from_scan, student_info, config, warnings)
+        finally:
+            # ลบทั้งโฟลเดอร์ — PDF ต้นทาง รูปที่แตกออกมา และภาพที่ align แล้ว
+            # ภาพกระดาษคำตอบมีชื่อและลายมือนักเรียน ห้ามค้างอยู่ใน temp
+            shutil.rmtree(work_dir, ignore_errors=True)
+
+        return jsonify(payload)
 
     @app.route("/api/save", methods=["POST"])
     def api_save():

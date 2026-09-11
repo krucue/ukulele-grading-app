@@ -100,18 +100,6 @@ input[type="text"]:focus, input[type="number"]:focus { outline: 2px solid var(--
   content: ""; flex: 1; height: 1px; background: var(--border);
 }
 
-/* ---------- เลือกโหมด ---------- */
-.modes { display: flex; flex-direction: column; gap: 10px; margin-bottom: 16px; }
-.mode {
-  display: flex; gap: 12px; align-items: flex-start; cursor: pointer;
-  border: 1px solid var(--border); border-radius: 10px; padding: 12px 14px; background: #FCFBF8;
-}
-.mode:has(input:checked) { border-color: var(--ink); background: #F1F6F4; }
-.mode input { margin-top: 4px; accent-color: var(--ink); }
-.mode strong { display: block; }
-.mode em { font-style: normal; font-size: 14px; color: var(--muted); }
-.mode.disabled { opacity: .55; }
-
 button.primary {
   font: inherit; font-weight: 600; cursor: pointer;
   background: var(--ink); color: #fff; border: none;
@@ -243,26 +231,6 @@ input.score-input.edited { border-color: var(--ochre); background: #FFFBF4; }
   .drop { min-height: 120px; }
 
   .score-big { font-size: 28px; }
-}
-
-/* แถบเตือนโหมดลองใช้งาน — ต้องสะดุดตากว่า warn-box ปกติ เพราะเป็นจุดที่ครูเข้าใจผิด
-   แล้วเอาคะแนนที่ไม่ได้มาจากกระดาษจริงไปกรอกต่อได้ (เคยเกิดขึ้นมาแล้ว) */
-.demo-banner {
-  display: block;
-  margin: 14px 0;
-  padding: 14px 16px;
-  border: 2px solid #B8722A;
-  border-left-width: 8px;
-  border-radius: 8px;
-  background: #FDF3E7;
-  color: #6B3F12;
-  line-height: 1.6;
-}
-
-.demo-banner strong {
-  display: block;
-  margin-bottom: 4px;
-  font-size: 1.05em;
 }
 
 /* แถบเตือนว่าเซิร์ฟเวอร์ที่รันอยู่เป็นคนละรุ่นกับไฟล์บนดิสก์ — สีแดงเพราะทุกอย่าง

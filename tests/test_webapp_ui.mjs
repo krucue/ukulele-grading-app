@@ -122,7 +122,7 @@ const gradeJson = {
   total_score: 2,
   max_total: 15,
   needs_review: true,
-  mode: { ocr: "claude-cli", llm: "claude-cli", requested: "real" },
+  mode: { ocr: "claude-cli", llm: "claude-cli" },
   warnings: ["หน้า 1: หาขอบกระดาษไม่ชัด ใช้ภาพทั้งใบแทน"],
   results: [
     {
@@ -206,6 +206,15 @@ const tick = async () => {
   await new Promise((r) => setTimeout(r, 0));
 };
 const click = (id) => $(id).dispatchEvent(new window.Event("click", { bubbles: true }));
+
+// ไม่มีโหมดลองใช้งานแล้ว หน้าเว็บจึงบังคับว่าต้องแนบกระดาษครบ 2 หน้าก่อนถึงจะยิง /api/grade
+// jsdom ใส่ไฟล์จริงลง input[type=file] ไม่ได้ ต้องสวม property files ทับเอา
+const fakeFile = new window.File(["x"], "หน้า.jpg", { type: "image/jpeg" });
+const attachPages = () => {
+  for (const id of ["page1", "page2"]) {
+    Object.defineProperty($(id), "files", { value: [fakeFile], configurable: true });
+  }
+};
 await tick();
 
 // ---------- 1) สถานะเริ่มต้น ----------
@@ -213,10 +222,10 @@ await tick();
 console.log("\nสถานะเริ่มต้นของหน้าจอ");
 check("ปุ่ม 'ตรวจนักเรียนคนต่อไป' ยังไม่โผล่", $("nextBtn").hidden);
 check("ยังไม่มีคำเตือนเรื่องบันทึกซ้ำ", $("saveWarn").hidden);
-check(
-  "โหมดตรวจจริงกดไม่ได้เมื่อยังไม่ได้ตั้ง credentials",
-  window.document.querySelector('input[name="mode"][value="real"]').disabled
-);
+// ไม่มีโหมดลองใช้งานแล้ว มีแต่ตรวจจริงทางเดียว — เครื่องที่ยังตั้งค่าไม่ครบต้องกดปุ่มไม่ได้
+// และต้องบอกเหตุผลตรงนั้นเลย ไม่ใช่ปล่อยให้กดแล้วไปเจอ error ตอนอัปโหลดเสร็จ
+check("ยังตรวจไม่ได้ -> ปุ่มตรวจกดไม่ได้", $("submitBtn").disabled);
+check("บอกเหตุผลที่กดไม่ได้", !$("notReadyBox").hidden && $("notReadyBox").textContent.includes("claude"));
 check("บอกปลายทางที่จะบันทึกให้เห็นก่อนกด", $("saveTarget").textContent.includes("ผลตรวจ.csv"));
 
 // log สดของทุกครั้งที่เช็คสถานะ — มีไว้วินิจฉัยตอนแถบเตือนค้างทั้งที่เซิร์ฟเวอร์ยืนยันว่า
@@ -233,6 +242,7 @@ console.log("\nกรอกชื่อแล้วกดตรวจ");
 $("studentName").value = "ด.ช. ทดสอบ ใจดี";
 $("studentNo").value = "12";
 $("studentClass").value = "5/2";
+attachPages();
 $("gradeForm").dispatchEvent(new window.Event("submit", { bubbles: true, cancelable: true }));
 await tick();
 
@@ -241,7 +251,6 @@ check("แสดงครบทุกข้อที่เซิร์ฟเว�
 check("ข้อที่ต้องตรวจสอบถูกไฮไลต์แถว", $("resultRows").querySelectorAll("tr.flagged").length === 1);
 check("แสดงเหตุผลที่ถูก flag ให้ครูเห็น", $("resultRows").textContent.includes("คำตอบไม่ตรงเฉลย"));
 check("แสดงคำเตือนที่เซิร์ฟเวอร์ส่งมาให้ครูเห็น", $("warnings").textContent.includes("หาขอบกระดาษไม่ชัด"));
-check("โหมดตรวจจริงไม่ขึ้นแถบเตือนของโหมดลองใช้งาน", $("demoBanner").hidden);
 check("คะแนนรวมคิดจากช่องกรอก ไม่ใช่ค่าที่เซิร์ฟเวอร์ส่งมาดิบ ๆ", $("scoreNow").textContent === "2");
 check("ปุ่มบันทึกพร้อมใช้", !$("saveBtn").hidden);
 check("ปุ่มคนต่อไปยังไม่โผล่ก่อนบันทึก", $("nextBtn").hidden);
@@ -347,30 +356,6 @@ check(
     !$("dropPdf").classList.contains("filled")
 );
 
-// ---------- โหมดลองใช้งาน: ห้ามเผลอเอาคะแนนไปใช้ ----------
-// เคยเกิดขึ้นจริง — ครูกดตรวจในโหมดลองใช้งานแล้วเห็นคำตอบตัวอย่างจากไฟล์ demo
-// (เช่นข้อ 2.3 เป็น "4 สาย" ทุกใบไม่ว่าใครทำ) แล้วนึกว่าเป็นผลจากกระดาษที่อัปโหลด
-console.log("");
-console.log("โหมดลองใช้งานต้องกันไม่ให้บันทึกลงไฟล์คะแนนจริง");
-
-const demoJson = JSON.parse(JSON.stringify(gradeJson));
-demoJson.mode = { ocr: "mock", llm: "mock", requested: "demo" };
-gradeResponse = demoJson;
-$("studentName").value = "ด.ช. ทดสอบ ใจดี";
-$("gradeForm").dispatchEvent(new window.Event("submit", { bubbles: true, cancelable: true }));
-await tick();
-
-check("โหมดลองใช้งานขึ้นแถบเตือนตัวใหญ่", !$("demoBanner").hidden);
-check(
-  "แถบเตือนบอกตรง ๆ ว่าไม่ได้อ่านจากกระดาษที่อัปโหลด",
-  $("demoBanner").textContent.includes("ไม่ได้อ่านจากกระดาษที่อัปโหลด")
-);
-check("ซ่อนปุ่มบันทึกในโหมดลองใช้งาน", $("saveBtn").hidden);
-
-const savesBefore = saveCalls;
-click("saveBtn");
-await tick();
-check("ถึงจะสั่งกดปุ่มบันทึกตรง ๆ ก็ไม่ยิงไปที่ /api/save", saveCalls === savesBefore);
 
 
 // ---------- เซสชันหลุดตอนมีผลตรวจค้างบนจอ ----------
@@ -381,6 +366,7 @@ console.log("เซสชันหลุดตอนมีผลตรวจค�
 
 gradeResponse = gradeJson;              // กลับมาโหมดตรวจจริง ปุ่มบันทึกจะได้โผล่
 $("studentName").value = "ด.ญ. ตรวจค้างไว้";
+attachPages();
 $("gradeForm").dispatchEvent(new window.Event("submit", { bubbles: true, cancelable: true }));
 await tick();
 check("มีผลตรวจค้างบนจอ และยังไม่ได้บันทึก", !$("results").hidden && !$("saveBtn").hidden);
@@ -512,11 +498,9 @@ check(
   $("settingsFileLine").textContent.includes("ตรวจจริงได้แล้ว") &&
     !$("settingsFileLine").textContent.includes("โหมดลองใช้งาน")
 );
-// ครูเปิดโปรแกรมมาเพื่อตรวจกระดาษจริง ไม่ใช่มาดูตัวอย่าง — ถ้าตรวจจริงได้ต้องเลือกไว้ให้เลย
-check(
-  "ตรวจจริงได้ -> ติ๊กโหมดตรวจจริงไว้ให้เลย",
-  window.document.querySelector('input[name="mode"][value="real"]').checked
-);
+// ตรวจจริงได้เมื่อไหร่ ปุ่มตรวจต้องกดได้ และคำเตือนต้องหายไป
+check("ตรวจจริงได้ -> ปุ่มตรวจกดได้", !$("submitBtn").disabled);
+check("ตรวจจริงได้ -> ไม่ขึ้นคำเตือนว่ายังตรวจไม่ได้", $("notReadyBox").hidden);
 
 statusJson.ready = { ocr: false, llm: false, sheets: false, real: false };
 window.eval(appJs);

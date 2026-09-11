@@ -183,17 +183,14 @@ async function loadStatus() {
 
   $("saveTarget").textContent = `จะบันทึกลง: ${data.sheet_target}`;
 
-  // โหมดตรวจจริงกดไม่ได้ถ้ายังไม่ได้ตั้ง credentials — บอกเหตุผลตรงนั้นเลย
-  const realInput = document.querySelector('input[name="mode"][value="real"]');
-  // ตรวจจริงได้เมื่อไหร่ให้เลือกไว้ให้เลย — ครูเปิดโปรแกรมมาเพื่อตรวจกระดาษจริง
-  // ไม่ใช่มาดูตัวอย่าง การปล่อยให้ค้างที่โหมดลองใช้งานคือต้นเหตุที่ครูเผลอตรวจผิดโหมด
-  // เลือกให้เฉพาะครั้งแรกที่โหลดหน้า ไม่ไปแย่งเปลี่ยนตอนครูเลือกเองแล้ว
-  if (data.ready.real && firstStatusLoad) realInput.checked = true;
-  if (!data.ready.ocr) {
-    realInput.disabled = true;
-    $("realMode").classList.add("disabled");
-    $("realModeNote").textContent =
-      "ยังใช้ไม่ได้ — ต้องมีอย่างใดอย่างหนึ่ง: ติดตั้ง Claude Code แล้วล็อกอิน (คำสั่ง claude) " +
+  // ไม่มีโหมดลองใช้งานแล้ว มีแต่ตรวจจริงทางเดียว — ถ้าเครื่องยังตรวจไม่ได้ต้องปิดปุ่ม
+  // แล้วบอกเหตุผลตรงนั้นเลย ไม่ใช่ปล่อยให้กดแล้วไปเจอ error ตอนอัปโหลดเสร็จ
+  const ready = data.ready.ocr;
+  $("submitBtn").disabled = !ready;
+  $("notReadyBox").hidden = ready;
+  if (!ready) {
+    $("notReadyBox").textContent =
+      "ยังตรวจไม่ได้ — ต้องมีอย่างใดอย่างหนึ่ง: ติดตั้ง Claude Code แล้วล็อกอิน (คำสั่ง claude) " +
       "หรือตั้ง anthropic_api_key ใน settings.json";
   }
 }
@@ -286,7 +283,6 @@ function resetForNextStudent() {
   $("results").hidden = true;
   $("resultRows").innerHTML = "";
   $("warnings").innerHTML = "";
-  $("demoBanner").hidden = true;
   hide($("formError"));
   hide($("saveOk"));
   hide($("saveWarn"));
@@ -315,10 +311,6 @@ $("nextBtn").addEventListener("click", resetForNextStudent);
 
 // ---------- ตรวจข้อสอบ ----------
 
-function selectedMode() {
-  return document.querySelector('input[name="mode"]:checked').value;
-}
-
 $("gradeForm").addEventListener("submit", async (e) => {
   e.preventDefault();
   hide($("formError"));
@@ -330,9 +322,7 @@ $("gradeForm").addEventListener("submit", async (e) => {
   $("saveBtn").hidden = false;
   $("nextBtn").hidden = true;
 
-  const mode = selectedMode();
   const body = new FormData();
-  body.append("mode", mode);
   body.append("student_name", $("studentName").value);
   body.append("student_no", $("studentNo").value);
   body.append("student_class", $("studentClass").value);
@@ -344,8 +334,8 @@ $("gradeForm").addEventListener("submit", async (e) => {
     if ($("page2").files[0]) body.append("page2", $("page2").files[0]);
   }
 
-  if (mode === "real" && !pdfFile && (!$("page1").files[0] || !$("page2").files[0])) {
-    show($("formError"), "โหมดตรวจจริงต้องใส่ไฟล์สแกน PDF หรือรูปให้ครบทั้ง 2 หน้าก่อน");
+  if (!pdfFile && (!$("page1").files[0] || !$("page2").files[0])) {
+    show($("formError"), "ต้องใส่ไฟล์สแกน PDF หรือรูปให้ครบทั้ง 2 หน้าก่อน");
     return;
   }
 
@@ -387,12 +377,6 @@ function renderResults(data) {
     .join(" · ");
   $("resultStudent").textContent = who || "(ยังไม่ได้กรอกชื่อนักเรียน)";
   $("scoreMax").textContent = `/ ${data.max_total}`;
-
-  // โหมดลองใช้งาน = คำตอบมาจากไฟล์ตัวอย่าง ไม่ได้อ่านกระดาษที่อัปโหลดเลย
-  // ต้องกันไม่ให้บันทึกลงไฟล์คะแนนจริง และต้องบอกให้เห็นชัดกว่าคำเตือนบรรทัดเดียว
-  const fromSample = !data.mode || data.mode.ocr === "mock";
-  $("demoBanner").hidden = !fromSample;
-  if (fromSample) $("saveBtn").hidden = true;
 
   const warnBox = $("warnings");
   warnBox.innerHTML = "";
@@ -488,10 +472,6 @@ function renderResults(data) {
 
 $("saveBtn").addEventListener("click", async () => {
   if (!lastGrading || savedOnce) return;
-  if (!lastGrading.mode || lastGrading.mode.ocr === "mock") {
-    show($("saveError"), "ผลชุดนี้มาจากโหมดลองใช้งาน บันทึกลงไฟล์คะแนนไม่ได้");
-    return;
-  }
   hide($("saveOk"));
   hide($("saveWarn"));
   hide($("saveError"));

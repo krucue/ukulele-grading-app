@@ -96,22 +96,9 @@
 
     <section class="panel">
       <h2><span class="step">3</span> เริ่มตรวจ</h2>
-      <div class="modes">
-        <label class="mode">
-          <input type="radio" name="mode" value="demo" checked>
-          <span>
-            <strong>ลองใช้งานก่อน</strong>
-            <em>ใช้คำตอบตัวอย่าง <strong>ไม่ได้อ่านกระดาษที่ใส่เข้ามา</strong> — มีไว้ดูหน้าตาผลลัพธ์เท่านั้น บันทึกคะแนนไม่ได้</em>
-          </span>
-        </label>
-        <label class="mode" id="realMode">
-          <input type="radio" name="mode" value="real">
-          <span>
-            <strong>ตรวจจริง</strong>
-            <em id="realModeNote">ให้ Claude อ่านลายมือจากรูปจริง แล้วตรวจให้คะแนนตามเฉลย</em>
-          </span>
-        </label>
-      </div>
+      <p class="hint" id="gradeNote">ให้ Claude อ่านลายมือจากกระดาษจริง แล้วตรวจให้คะแนนตามเฉลย
+      — ใช้เวลาประมาณ 1 นาทีต่อคน</p>
+      <p class="error-box" id="notReadyBox" hidden></p>
       <button type="submit" class="primary" id="submitBtn">ตรวจข้อสอบ</button>
     </section>
 
@@ -142,13 +129,7 @@
       <tbody id="resultRows"></tbody>
     </table>
 
-    <div class="demo-banner" id="demoBanner" hidden>
-      <strong>นี่คือผลจากโหมดลองใช้งาน ไม่ได้อ่านจากกระดาษที่อัปโหลด</strong>
-      <span>คำตอบทุกข้อด้านบนมาจากไฟล์ตัวอย่างชุดเดียวกันเสมอ ไม่ว่าจะใส่กระดาษของใครก็ตาม
-      จึงบันทึกไม่ได้ — เลือก "ตรวจจริง" ถึงจะได้คำตอบจากลายมือในกระดาษใบนี้
-      <br><strong>ถ้าเลือก "ตรวจจริง" แล้วยังขึ้นข้อความนี้ ให้กด F5 โหลดหน้าใหม่</strong>
-      แปลว่าหน้าเว็บที่เห็นอยู่เป็นภาพเก่าค้างจากก่อนเปิดโปรแกรมรอบล่าสุด</span>
-    </div>
+    
 
     <div class="save-row">
       <button type="button" class="primary" id="saveBtn">บันทึกคะแนน</button>

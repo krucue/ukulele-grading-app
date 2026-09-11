@@ -32,6 +32,7 @@ from grading.align import imread_unicode
 from grading.config_loader import load_config
 from grading.console import enable_utf8_output
 from grading.heic import convert_to_jpeg, heic_supported, is_heic
+from grading.ocr import MockOcrProvider
 from grading.pipeline import SubmissionResult, submission_to_sheet_row
 from grading.settings import DEFAULT_CLAUDE_MODEL, AppSettings, load_settings
 
@@ -172,12 +173,25 @@ check(
 
 config = load_config(PROJECT_ROOT / "config" / "answer_key_config.json")
 
+
+def canned_ocr(exam_config):
+    """คำตอบสำเร็จรูปแทนการเรียก Claude — เสียบผ่าน create_app(ocr_override=...)
+
+    เดิมหน้าที่นี้เป็น "โหมดลองใช้งาน" ที่เป็นปุ่มบนหน้าจอ ครูกดเองได้ แล้วเผลอเอาคะแนน
+    จากคำตอบตัวอย่างไปใช้จริงมาแล้ว ตอนนี้หน้าเว็บมีแต่ตรวจจริงทางเดียว ช่องนี้เปิดได้
+    จากตอนสร้างแอปเท่านั้น ไม่มีทางเปิดจาก request
+    """
+    canned = json.loads((PROJECT_ROOT / "demo" / "mock_ocr_answers.json").read_text(encoding="utf-8"))
+    return MockOcrProvider(canned).extract(
+        image_path="(เทส)", question_ids=[q.question_id for q in exam_config.questions]
+    )
+
 with tempfile.TemporaryDirectory() as tmpdir:
     csv_path = Path(tmpdir) / "ผลตรวจ.csv"
     # บังคับทาง api ไว้ เพื่อให้ผลเทสเหมือนกันทุกเครื่อง ไม่ว่าจะติดตั้ง Claude Code
     # ไว้หรือไม่ (ถ้าปล่อย auto เครื่องที่มีคำสั่ง claude จะตรวจจริงได้ตั้งแต่ยังไม่ตั้งคีย์)
     settings = AppSettings(csv_path=str(csv_path), ocr_provider="api")
-    app = create_app(settings)
+    app = create_app(settings, ocr_override=canned_ocr)
     client = app.test_client()
 
     # ---------- /api/status ----------
@@ -198,19 +212,21 @@ with tempfile.TemporaryDirectory() as tmpdir:
     check("หน้าแรกโหลดได้", res.status_code == 200)
     check("หน้าแรกมีปุ่มตรวจข้อสอบ", "ตรวจข้อสอบ" in res.get_data(as_text=True))
 
-    # ---------- /api/grade โหมดลองใช้งาน ----------
+    # ---------- /api/grade ----------
+    # ไม่มีโหมดลองใช้งานแล้ว ตรวจจริงทางเดียว จึงต้องแนบกระดาษครบ 2 หน้าเสมอ
     res = client.post(
         "/api/grade",
         data={
-            "mode": "demo",
             "student_name": "ด.ช. ทดสอบ ใจดี",
             "student_no": "12",
             "student_class": "5/2",
+            "page1": (BytesIO(b"x"), "หน้า1.jpg"),
+            "page2": (BytesIO(b"x"), "หน้า2.jpg"),
         },
         content_type="multipart/form-data",
     )
     graded = res.get_json()
-    check("/api/grade โหมดลองใช้งานตอบ 200 โดยไม่ต้องมีรูป", res.status_code == 200)
+    check("/api/grade ตรวจผ่านเมื่อแนบครบ 2 หน้า", res.status_code == 200, str(graded)[:160])
     check(
         "ตรวจครบทุกข้อตามเฉลย",
         len(graded["results"]) == len(config.questions),
@@ -218,34 +234,29 @@ with tempfile.TemporaryDirectory() as tmpdir:
     )
     check("คะแนนเต็มตรงกับเฉลย", graded["max_total"] == config.total_score)
     check("คะแนนรวมไม่เกินคะแนนเต็ม", 0 <= graded["total_score"] <= graded["max_total"])
-    check("บอกชัดว่าใช้ของปลอม", graded["mode"]["ocr"] == "mock" and graded["mode"]["llm"] == "mock")
-    check(
-        "เตือนว่าห้ามเอาคะแนนโหมดนี้ไปใช้",
-        any("ห้ามนำคะแนนไปใช้" in w for w in graded["warnings"]),
-    )
+    check("บอกชัดว่าอ่านลายมือมาทางไหน", graded["mode"]["ocr"] == "test")
     check(
         "ส่งเหตุผลที่ต้องตรวจซ้ำมาให้ครูอ่าน",
         any(r["flagged"] and r["flag_reasons"] for r in graded["results"]),
     )
 
-    # ---------- /api/grade โหมดตรวจจริง ต้องถูกปฏิเสธ ----------
-    res = client.post("/api/grade", data={"mode": "real"}, content_type="multipart/form-data")
-    check("โหมดตรวจจริงที่ไม่แนบรูป ถูกตีกลับ", res.status_code == 400)
+    # ---------- ไม่แนบรูปเลย ต้องถูกปฏิเสธ ----------
+    res = client.post("/api/grade", data={}, content_type="multipart/form-data")
+    check("ไม่แนบรูปเลย ถูกตีกลับ", res.status_code == 400)
     check("ตีกลับพร้อมข้อความไทย", "รูป" in res.get_json()["error"])
 
     # ---------- ไฟล์แนบชนิดที่อ่านไม่ได้ ----------
     res = client.post(
         "/api/grade",
         data={
-            "mode": "demo",
-            "page1": (BytesIO(b"this is not an image"), "คำตอบ.txt"),
+                        "page1": (BytesIO(b"this is not an image"), "คำตอบ.txt"),
         },
         content_type="multipart/form-data",
     )
     check("ไฟล์ .txt ถูกตีกลับ", res.status_code == 400)
     res = client.post(
         "/api/grade",
-        data={"mode": "demo", "page1": (BytesIO(b"\x00\x01"), "IMG_1234.heic")},
+        data={"page1": (BytesIO(b"\x00\x01"), "IMG_1234.heic")},
         content_type="multipart/form-data",
     )
     # .heic ที่ดีถูกแปลงให้เองแล้ว (ดูหัวข้อ "รูป .heic จาก iPhone" ข้างล่าง) แต่ไฟล์ที่
@@ -258,7 +269,7 @@ with tempfile.TemporaryDirectory() as tmpdir:
     # เครื่องสแกนคายไฟล์ออกมาเป็น PDF ไฟล์เดียวจบทั้ง 2 หน้า ครูต้องใส่ของนั้นได้เลย
     res = client.post(
         "/api/grade",
-        data={"mode": "demo", "page1": (BytesIO(b"%PDF-1.4"), "สแกน.pdf")},
+        data={"page1": (BytesIO(b"%PDF-1.4"), "สแกน.pdf")},
         content_type="multipart/form-data",
     )
     check("ใส่ .pdf ผิดช่อง (ช่องรูป) ถูกตีกลับ", res.status_code == 400)
@@ -270,7 +281,7 @@ with tempfile.TemporaryDirectory() as tmpdir:
 
     res = client.post(
         "/api/grade",
-        data={"mode": "demo", "pdf": (BytesIO(b"not-a-pdf"), "รูป.jpg")},
+        data={"pdf": (BytesIO(b"not-a-pdf"), "รูป.jpg")},
         content_type="multipart/form-data",
     )
     check("ใส่รูปผิดช่อง (ช่อง PDF) ถูกตีกลับ", res.status_code == 400)
@@ -297,8 +308,7 @@ with tempfile.TemporaryDirectory() as tmpdir:
         res = client.post(
             "/api/grade",
             data={
-                "mode": "demo",
-                "student_name": "ด.ญ. สแกนมา ทั้งไฟล์",
+                                "student_name": "ด.ญ. สแกนมา ทั้งไฟล์",
                 "pdf": (scan_pdf_bytes([(620, 877), (620, 877)]), "เอกสารที่สแกน.pdf"),
             },
             content_type="multipart/form-data",
@@ -306,13 +316,11 @@ with tempfile.TemporaryDirectory() as tmpdir:
         check("อัปโหลด PDF สแกน 2 หน้า ตรวจผ่าน", res.status_code == 200, res.get_data(as_text=True)[:200])
         if res.status_code == 200:
             check("ตรวจครบทุกข้อจาก PDF", len(res.get_json()["results"]) == len(config.questions))
-            # โหมดลองใช้งานต้องไม่ถูกบล็อกด้วยเรื่องใบอ้างอิง แต่ต้องพูดถึงมันในคำเตือน
-            # (กระดาษจำลองในเทสนี้จับคู่กับใบอ้างอิงไม่ได้อยู่แล้ว ส่วนเครื่องที่ยังไม่มี
-            # ใบอ้างอิงก็จะได้คำเตือนอีกแบบ — ทั้งสองทางต้องบอกครูว่ากรอบตัดภาพเชื่อไม่ได้)
+            # ยืนยันว่าเดินผ่านช่องต่อของเทส ไม่ได้เผลอไปเรียก Claude จริงระหว่างรันเทส
             check(
-                "โหมดลองใช้งานเตือนเรื่องใบอ้างอิง แต่ไม่ตีกลับ",
-                any("ใบอ้างอิง" in w for w in res.get_json()["warnings"]),
-                str(res.get_json()["warnings"])[:160],
+                "อ่านลายมือผ่านช่องต่อของเทส ไม่ได้เรียก Claude จริง",
+                res.get_json()["mode"]["ocr"] == "test",
+                str(res.get_json()["mode"]),
             )
 
         # ไฟล์ชั่วคราวที่แตกจาก PDF มีลายมือนักเรียนอยู่ ห้ามค้างใน temp หลังตอบกลับ
@@ -328,8 +336,7 @@ with tempfile.TemporaryDirectory() as tmpdir:
         res = client.post(
             "/api/grade",
             data={
-                "mode": "demo",
-                "pdf": (scan_pdf_bytes([(620, 877)]), "สแกนหน้าเดียว.pdf"),
+                                "pdf": (scan_pdf_bytes([(620, 877)]), "สแกนหน้าเดียว.pdf"),
             },
             content_type="multipart/form-data",
         )
@@ -344,7 +351,7 @@ with tempfile.TemporaryDirectory() as tmpdir:
         writer.write(text_pdf)
         res = client.post(
             "/api/grade",
-            data={"mode": "demo", "pdf": (BytesIO(text_pdf.getvalue()), "พิมพ์จากเวิร์ด.pdf")},
+            data={"pdf": (BytesIO(text_pdf.getvalue()), "พิมพ์จากเวิร์ด.pdf")},
             content_type="multipart/form-data",
         )
         check("PDF ที่ไม่ได้สแกนมา (ไม่มีรูปฝัง) ถูกตีกลับ", res.status_code == 400)
@@ -358,8 +365,7 @@ with tempfile.TemporaryDirectory() as tmpdir:
         res = client.post(
             "/api/grade",
             data={
-                "mode": "demo",
-                "pdf": (scan_pdf_bytes([(620, 877), (620, 877)]), "สแกน.pdf"),
+                                "pdf": (scan_pdf_bytes([(620, 877), (620, 877)]), "สแกน.pdf"),
                 "page1": (scan_pdf_bytes([(620, 877)]), "หน้า1.jpg"),
             },
             content_type="multipart/form-data",
@@ -371,22 +377,24 @@ with tempfile.TemporaryDirectory() as tmpdir:
             res.get_json()["error"],
         )
 
-        # ---------- โหมดตรวจจริงโดยยังไม่ได้ตั้งคีย์ ----------
+        # ---------- ยังไม่ได้ตั้งคีย์ และไม่มีช่องต่อของเทส ----------
         # จุดตายของทั้งระบบ: ถ้าตรงนี้ถอยไปใช้คำตอบจำลองเงียบ ๆ ครูจะเอาคะแนนที่
         # ไม่ได้มาจากลายมือจริงไปกรอกปพ. ต้องตีกลับพร้อมบอกว่าต้องตั้งอะไร
-        res = client.post(
+        #
+        # ใช้แอปแยกที่ไม่เสียบ ocr_override เพื่อจำลองเครื่องครูจริง ๆ
+        bare = create_app(AppSettings(csv_path=str(csv_path), ocr_provider="api")).test_client()
+        res = bare.post(
             "/api/grade",
             data={
-                "mode": "real",
                 "pdf": (scan_pdf_bytes([(620, 877), (620, 877)]), "สแกน.pdf"),
             },
             content_type="multipart/form-data",
         )
-        check("โหมดตรวจจริงที่ยังไม่ได้ตั้งคีย์ ถูกตีกลับ ไม่ถอยไปใช้ของจำลอง", res.status_code == 400)
+        check("ยังไม่ได้ตั้งคีย์ -> ถูกตีกลับ ไม่ถอยไปใช้ของจำลอง", res.status_code == 400)
         check(
             "บอกว่าต้องตั้ง anthropic_api_key",
             "anthropic_api_key" in res.get_json()["error"],
-            res.get_json()["error"],
+            str(res.get_json())[:160],
         )
 
     # ---------- /api/save ----------
@@ -505,7 +513,8 @@ else:
     # เพราะจุดที่เคยพังคือด่านเช็คนามสกุลใน _save_upload ไม่ใช่ตัวแปลง
     with tempfile.TemporaryDirectory() as tmpdir:
         heic_app = create_app(
-            AppSettings(csv_path=str(Path(tmpdir) / "ผลตรวจ.csv"), ocr_provider="api")
+            AppSettings(csv_path=str(Path(tmpdir) / "ผลตรวจ.csv"), ocr_provider="api"),
+            ocr_override=canned_ocr,
         )
         heic_client = heic_app.test_client()
 
@@ -517,8 +526,7 @@ else:
         res = heic_client.post(
             "/api/grade",
             data={
-                "mode": "demo",
-                "student_name": "ด.ช. ถ่ายด้วยไอโฟน",
+                                "student_name": "ด.ช. ถ่ายด้วยไอโฟน",
                 "page1": (heic_bytes(), "IMG_0001.HEIC"),
                 "page2": (heic_bytes(), "IMG_0002.heic"),
             },
