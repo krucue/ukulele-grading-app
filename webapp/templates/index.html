@@ -6,7 +6,7 @@
 <title>ตรวจข้อสอบอูคูเลเล่</title>
 <link rel="stylesheet" href="{{ url_for('static', filename='style.css') }}">
 </head>
-<body>
+<body data-build="{{ build_id }}">
     <div class="stale-banner" id="staleBanner" hidden>
       <strong>โปรแกรมถูกอัปเดตหลังจากเปิดหน้าต่างนี้ — ต้องเปิดโปรแกรมใหม่ก่อนใช้งาน</strong>
       <span><strong>ทำที่เครื่องคอมเท่านั้น</strong> (ถ้ากำลังดูจากมือถือ ต้องไปทำที่คอมที่เปิด

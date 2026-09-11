@@ -416,6 +416,42 @@ await tick();
 check("เซิร์ฟเวอร์กลับมาเป็นรุ่นใหม่แล้ว -> หน้าเว็บสั่งโหลดตัวเองใหม่", navigationAttempted);
 
 
+// ---------- แท็บที่ค้างอยู่เป็นหน้าเก่าจากเซิร์ฟเวอร์ตัวก่อน ----------
+// เกิดขึ้นจริงและกินเวลาไล่หาหลายรอบ: ครูเปิดโปรแกรมใหม่แล้วกดรีเฟรช แต่ยังเห็นแถบเตือน
+// ของรุ่นเก่าค้างอยู่ ทั้งที่เซิร์ฟเวอร์ใหม่ตอบว่าไม่มีปัญหาอะไรเลย และไม่มีอะไรบนหน้าจอ
+// บอกได้เลยว่ากำลังดูหน้าเก่าอยู่
+console.log("");
+console.log("แท็บที่เป็นหน้าเก่าจากเซิร์ฟเวอร์ตัวก่อน");
+
+window.document.body.dataset.build = "รุ่นเก่า123";
+statusJson.stale_server = false;
+statusJson.build = "รุ่นใหม่456";
+navigationAttempted = false;
+window.dispatchEvent(new window.Event("focus"));
+await tick();
+check("รหัสรุ่นไม่ตรงกับเซิร์ฟเวอร์ -> โหลดหน้าใหม่ให้เลย", navigationAttempted);
+
+// jsdom ทำ navigation จริงไม่ได้ หน้าเลยยังเป็นตัวเดิม = เลียนแบบเบราว์เซอร์ที่ดื้อ
+// คืนของเก่ามาให้อีก ห้ามวนโหลดซ้ำไม่รู้จบ ต้องหยุดแล้วบอกครูว่าให้ล้างแคชเอง
+navigationAttempted = false;
+window.dispatchEvent(new window.Event("focus"));
+await tick();
+check("โหลดใหม่แล้วยังได้ของเก่า -> ไม่วนโหลดซ้ำไม่รู้จบ", !navigationAttempted);
+check("บอกครูให้ล้างแคชแทน", $("formError").textContent.includes("Ctrl+Shift+R"), $("formError").textContent);
+
+// รหัสตรงกันแล้วต้องกลับมาทำงานปกติ ไม่ใช่ค้างอยู่ในโหมดเตือน
+// (ตั้ง stale_server = true ไว้ด้วย เพื่อกันทางโหลดใหม่อีกทางที่ไม่เกี่ยวกับรหัสรุ่น
+//  คือ "เคยเห็น stale แล้วตอนนี้หายแล้ว -> โหลดใหม่" ซึ่งเทสชุดก่อนหน้าเพิ่งจุดชนวนไว้)
+window.document.body.dataset.build = "รุ่นใหม่456";
+statusJson.stale_server = true;
+navigationAttempted = false;
+window.dispatchEvent(new window.Event("focus"));
+await tick();
+check("รหัสรุ่นตรงกัน -> ไม่โหลดใหม่ ใช้งานต่อได้ปกติ", !navigationAttempted);
+statusJson.stale_server = false;
+delete statusJson.build;
+
+
 // ---------- ข้อความเรื่อง settings.json ต้องตรงกับความจริง ----------
 // เคยเขียนตายตัวว่า "ไม่มีไฟล์ = โหมดลองใช้งาน" ซึ่งไม่จริงแล้ว เครื่องที่มีคำสั่ง claude
 // ตรวจจริงได้เลยโดยไม่ต้องมีไฟล์ ครูอ่านแล้วสับสนว่าตกลงตรวจจริงได้หรือไม่ได้

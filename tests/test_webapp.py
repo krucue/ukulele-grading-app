@@ -633,6 +633,31 @@ with tempfile.TemporaryDirectory() as tmpdir:
 
     check("แก้กลับเป็นเหมือนเดิม -> เลิกฟ้อง", stale_now() == (False, []))
 
+# รหัสรุ่น (build) ตอบคนละคำถามกับ stale_server: ตัวนี้คือ "หน้าเว็บในแท็บนี้เก่ากว่า
+# เซิร์ฟเวอร์ที่กำลังคุยอยู่ไหม" ต้องรวมไฟล์หน้าจอ (html/css/js) ด้วย ไม่ใช่แค่ .py
+# ไม่งั้นแก้หน้าจออย่างเดียวแล้วแท็บเก่าจะไม่รู้ตัว
+with tempfile.TemporaryDirectory() as tmpdir:
+    stamped = create_app(AppSettings(csv_path=str(Path(tmpdir) / "ผลตรวจ.csv"), ocr_provider="api"))
+    stamped_client = stamped.test_client()
+    build = stamped.config["BUILD_ID"]
+    check("มีรหัสรุ่นให้หน้าเว็บเทียบ", len(build) == 12)
+    check("/api/status ส่งรหัสรุ่นมาด้วย", stamped_client.get("/api/status").get_json()["build"] == build)
+    check(
+        "ฝังรหัสรุ่นไว้ในหน้าเว็บ ให้เทียบกันเองได้",
+        f'data-build="{build}"' in stamped_client.get("/").get_data(as_text=True),
+    )
+    check("เรียกซ้ำได้ค่าเดิมเสมอ", webapp_app.build_id() == build)
+
+    # แก้ไฟล์หน้าจออย่างเดียว (ไม่แตะ .py) รหัสรุ่นต้องเปลี่ยน ไม่งั้นแท็บเก่าไม่รู้ตัว
+    css = PROJECT_ROOT / "webapp" / "static" / "style.css"
+    css_original = css.read_bytes()
+    try:
+        css.write_bytes(css_original + b"/* test */")
+        check("แก้แค่ style.css รหัสรุ่นก็ต้องเปลี่ยน", webapp_app.build_id() != build)
+    finally:
+        css.write_bytes(css_original)
+    check("แก้กลับแล้วรหัสรุ่นกลับมาเหมือนเดิม", webapp_app.build_id() == build)
+
 check("แฮชรายไฟล์ครอบคลุมทั้ง grading/ และ webapp/", {
     "grading/scorer.py", "webapp/app.py", "web_app.py"
 } <= set(webapp_app.source_hashes()))

@@ -34,6 +34,34 @@ function hasUnsavedResults() {
   return !$("results").hidden && !$("saveBtn").hidden;
 }
 
+// โหลดหน้าใหม่ได้แค่ครั้งเดียวต่อรุ่น — ถ้าโหลดแล้วยังได้ของเก่ากลับมาอีก (เบราว์เซอร์
+// ดื้อไม่ยอมทิ้งแคช) ห้ามวนโหลดซ้ำไม่รู้จบ ให้บอกครูตรง ๆ ว่าต้องกดล้างแคชเอง
+function handleOldPage(serverBuild) {
+  const pageBuild = window.document.body.dataset.build || "";
+  if (pageBuild === serverBuild) return false;
+
+  const key = `ukulele-reloaded-for-${serverBuild}`;
+  let alreadyTried = false;
+  try {
+    alreadyTried = window.sessionStorage.getItem(key) === "1";
+    window.sessionStorage.setItem(key, "1");
+  } catch (err) {
+    // โหมดส่วนตัวบางตัวปิด sessionStorage — ถือว่ายังไม่เคยลอง โหลดใหม่ไปเลยรอบเดียว
+  }
+
+  if (alreadyTried) {
+    show(
+      $("formError"),
+      "หน้าเว็บนี้เป็นรุ่นเก่าค้างอยู่ และโหลดใหม่แล้วยังได้ของเก่ากลับมา " +
+        "— กด Ctrl+Shift+R (บนมือถือ: ปิดแท็บนี้แล้วเปิดลิงก์ใหม่) เพื่อล้างแคชของเบราว์เซอร์"
+    );
+    return true;
+  }
+
+  window.location.reload();
+  return true;
+}
+
 function handleLocked(data, errorBoxId) {
   if (!data || data.locked !== true) return false;
 
@@ -113,6 +141,14 @@ async function loadStatus() {
   // ถ้าหน้านี้เคยเห็นว่า stale แล้วรอบนี้ไม่ stale แปลว่าครูปิดแล้วเปิดโปรแกรมใหม่
   // เรียบร้อย แต่หน้าเว็บยังเป็นภาพเก่าค้างอยู่ (เบราว์เซอร์แค่สลับมาที่แท็บเดิม
   // ไม่ได้โหลดใหม่) — โหลดหน้าใหม่ให้เลย ไม่ต้องให้ครูมานั่งกด F5 เอง
+  // แท็บนี้เป็นหน้าเก่าจากเซิร์ฟเวอร์ตัวก่อนหรือเปล่า — เทียบรหัสรุ่นที่ฝังไว้ในหน้า
+  // กับที่เซิร์ฟเวอร์ตอบมา ถ้าไม่ตรงแปลว่ากำลังดูของเก่าอยู่ ให้โหลดใหม่ให้เลย
+  //
+  // เคยเสียเวลาไล่หากันหลายรอบเพราะเรื่องนี้: ครูกดรีเฟรชแล้วแต่ยังเห็นแถบเตือนของ
+  // รุ่นเก่าค้างอยู่ ทั้งที่เซิร์ฟเวอร์ใหม่บอกว่าไม่มีปัญหาอะไรเลย และไม่มีทางรู้ได้เลย
+  // จากหน้าจอว่ากำลังดูหน้าเก่าอยู่
+  if (data.build && handleOldPage(data.build)) return;
+
   if (sawStaleServer && !data.stale_server) {
     window.location.reload();
     return;

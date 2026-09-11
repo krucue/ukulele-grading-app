@@ -115,6 +115,30 @@ def changed_source_files(before: dict[str, str]) -> list[str]:
     return sorted(changed)
 
 
+def build_id() -> str:
+    """รหัสรุ่นของโปรแกรมทั้งชุด — รวมไฟล์หน้าจอ (html/css/js) ด้วย ไม่ใช่แค่ .py
+
+    ใช้ตอบคำถามที่ต่างจาก stale_server คนละเรื่อง:
+      stale_server = "เซิร์ฟเวอร์ที่รันอยู่ เก่ากว่าไฟล์บนดิสก์ไหม"
+      build_id     = "หน้าเว็บในแท็บนี้ เก่ากว่าเซิร์ฟเวอร์ที่กำลังคุยอยู่ไหม"
+
+    ตัวหลังคือปัญหาที่กินเวลาไปหลายรอบ: ครูเปิดแท็บค้างไว้จากเซิร์ฟเวอร์ตัวก่อน
+    พอเปิดโปรแกรมใหม่แล้วกดรีเฟรช เบราว์เซอร์บางทีก็หยิบของเก่ามาให้ ครูจึงเห็นแถบเตือน
+    ของรุ่นเก่าค้างอยู่ทั้งที่เซิร์ฟเวอร์ใหม่บอกว่าไม่มีปัญหาอะไรเลย แล้วไม่มีทางรู้ได้เลย
+    ว่ากำลังดูหน้าเก่าอยู่ ตอนนี้หน้าเว็บเทียบรหัสนี้เองแล้วโหลดตัวเองใหม่ให้
+    """
+    digest = hashlib.sha256()
+    for name, file_hash in sorted(source_hashes().items()):
+        digest.update(f"{name}:{file_hash}".encode())
+    for folder in ("templates", "static"):
+        for path in sorted((Path(__file__).resolve().parent / folder).rglob("*")):
+            if path.is_file():
+                file_hash = _file_hash(path)
+                if file_hash:
+                    digest.update(f"{path.name}:{file_hash}".encode())
+    return digest.hexdigest()[:12]
+
+
 def _session_secret(access_code: str) -> str:
     """กุญแจเซ็นคุกกี้ — ผูกกับรหัสผ่าน ไม่ใช่สุ่มใหม่ทุกครั้งที่เปิดโปรแกรม
 
@@ -315,6 +339,7 @@ def create_app(settings: AppSettings | None = None) -> Flask:
     # ไม่ได้ทั้งที่โค้ดใหม่ทำได้แล้ว แล้วฟอร์มถูกส่งเป็นโหมดลองใช้งานโดยครูไม่รู้ตัว
     app.config["STARTED_AT"] = time.time()
     app.config["SOURCE_HASHES_AT_START"] = source_hashes()
+    app.config["BUILD_ID"] = build_id()
 
     app.secret_key = _session_secret(app.config["SETTINGS"].access_code)
     app.config["SESSION_COOKIE_SAMESITE"] = "Lax"
@@ -400,7 +425,9 @@ def create_app(settings: AppSettings | None = None) -> Flask:
 
     @app.route("/")
     def index():
-        return render_template("index.html")
+        # ฝังรหัสรุ่นลงในหน้า เพื่อให้หน้าเว็บเทียบกับที่เซิร์ฟเวอร์ตอบมาได้เองว่า
+        # ตัวเองเป็นหน้าเก่าหรือเปล่า (ดู build_id())
+        return render_template("index.html", build_id=app.config["BUILD_ID"])
 
     @app.route("/api/status")
     def api_status():
@@ -434,6 +461,9 @@ def create_app(settings: AppSettings | None = None) -> Flask:
                 # บอกชื่อไฟล์มาด้วย เผื่อแถบเตือนเด้งค้างแบบหาสาเหตุไม่เจออีก
                 # จำกัด 5 ชื่อพอ ไม่ให้ยาวจนอ่านไม่ไหวบนมือถือ
                 "stale_files": changed[:5],
+                # หน้าเว็บเอาไปเทียบกับรหัสที่ฝังอยู่ในตัวเอง ถ้าไม่ตรงแปลว่า
+                # แท็บนี้เป็นหน้าเก่าจากเซิร์ฟเวอร์ตัวก่อน ให้โหลดตัวเองใหม่
+                "build": app.config["BUILD_ID"],
                 "problems": settings_obj.problems,
                 "status_lines": settings_obj.status_lines(),
                 "ready": {
