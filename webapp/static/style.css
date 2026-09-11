@@ -15,6 +15,20 @@
 
 * { box-sizing: border-box; }
 
+/* ต้องมีกฎนี้ ไม่ใช่ของแถม — เป็นบั๊กที่ทำให้แถบเตือน "โปรแกรมถูกอัปเดต" ค้างอยู่บนจอ
+   ครูอยู่หลายวัน ปิดเปิดโปรแกรมกี่รอบก็ไม่หาย
+
+   เบราว์เซอร์ซ่อน element ที่มี attribute hidden ด้วยกฎ [hidden]{display:none} ที่อยู่ใน
+   UA stylesheet (สไตล์ตั้งต้นของเบราว์เซอร์เอง) แต่ตามสเปก CSS cascade สไตล์ที่เราเขียนเอง
+   (author stylesheet) มีลำดับความสำคัญ "สูงกว่า" UA stylesheet เสมอ ดังนั้นบรรทัดเดียวอย่าง
+   .stale-banner { display: block } ก็ลบล้าง [hidden] ทิ้งได้ทั้งหมด -> element นั้นจะโผล่
+   ตลอดเวลา และสั่ง el.hidden = true จาก JS กี่ครั้งก็ไม่มีผล เพราะ display ถูกยึดไว้แล้ว
+
+   เทส jsdom จับบั๊กนี้ไม่ได้ เพราะ jsdom จำลอง cascade ไม่ตรงสเปก (ให้ [hidden] ชนะ
+   ทั้งที่ของจริงแพ้) เทสจึงเขียวมาตลอดทั้งที่หน้าจอจริงพัง — ดูเทสที่ยึดเรื่องนี้ไว้ใน
+   tests/test_webapp_ui.mjs หัวข้อ "กฎ [hidden] ต้องชนะทุกกฎที่ตั้ง display" */
+[hidden] { display: none !important; }
+
 body {
   margin: 0;
   background: var(--paper);

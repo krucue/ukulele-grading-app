@@ -57,6 +57,42 @@ const check = (name, cond, note = "") => {
 
 let html = fs.readFileSync(path.join(ROOT, "webapp/templates/index.html"), "utf-8");
 const appJs = fs.readFileSync(path.join(ROOT, "webapp/static/app.js"), "utf-8");
+const styleCss = fs.readFileSync(path.join(ROOT, "webapp/static/style.css"), "utf-8");
+
+// ---------- กฎ [hidden] ต้องชนะทุกกฎที่ตั้ง display ----------
+//
+// บั๊กจริงที่กินเวลาไล่หาหลายวัน: แถบเตือน "โปรแกรมถูกอัปเดต" ค้างอยู่บนจอตลอด ปิดเปิด
+// โปรแกรมกี่รอบก็ไม่หาย เพราะ .stale-banner { display: block } ใน style.css ลบล้างกฎ
+// [hidden]{display:none} ของเบราว์เซอร์ทิ้ง (author stylesheet ชนะ UA stylesheet ตามสเปก)
+// element จึงโผล่ตลอดเวลา และ el.hidden = true จาก JS ไม่มีผลอะไรเลย
+//
+// เทสนี้ต้องอ่านตัวไฟล์ CSS ตรง ๆ ห้ามใช้ getComputedStyle ของ jsdom เพราะ jsdom
+// จำลอง cascade ไม่ตรงสเปก (ให้ [hidden] ชนะทั้งที่ของจริงแพ้) ซึ่งเป็นเหตุผลที่เทสชุดนี้
+// เขียวมาตลอดทั้งที่หน้าจอจริงพังอยู่
+console.log("กฎ [hidden] ต้องชนะทุกกฎที่ตั้ง display");
+
+check(
+  "style.css มีกฎ [hidden] ที่ใช้ !important ครอบไว้",
+  /\[hidden\]\s*\{[^}]*display:\s*none\s*!important/.test(styleCss),
+  "ขาดกฎนี้เมื่อไหร่ ทุก element ที่ซ่อนด้วย hidden แล้วมี class ตั้ง display จะโผล่ตลอด"
+);
+
+// เช็คซ้ำอีกชั้นว่า class ที่ถูกซ่อนด้วย hidden ใน index.html ตัวไหนบ้างที่ตั้ง display ไว้
+// ไม่ได้ห้ามตั้ง แค่ต้องแน่ใจว่ามีกฎ [hidden] ข้างบนคุมอยู่ — รายงานออกมาให้เห็นด้วย
+const hiddenClasses = new Set();
+for (const tag of html.match(/<[^>]*\bhidden\b[^>]*>/g) || []) {
+  for (const cls of (tag.match(/class="([^"]*)"/)?.[1] || "").split(/\s+/)) {
+    if (cls) hiddenClasses.add(cls);
+  }
+}
+const riskyClasses = [...hiddenClasses].filter((cls) =>
+  new RegExp(`\\.${cls}\\s*\\{[^}]*display:`).test(styleCss)
+);
+check(
+  "รู้ว่า class ไหนบ้างที่ตั้ง display ทับ (ต้องพึ่งกฎ [hidden] ข้างบน)",
+  true,
+  riskyClasses.length ? riskyClasses.join(", ") : "ไม่มี"
+);
 
 console.log("อ่าน template ตรงจากไฟล์ได้ (ไม่ต้องปลุก Flask)");
 // อ่าน template ดิบ ๆ ได้เพราะตอนนี้มันเป็น HTML นิ่ง ๆ มีแต่ url_for
