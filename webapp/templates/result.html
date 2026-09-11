@@ -1,0 +1,40 @@
+{% include "_head.html" %}
+
+  <p><a class="back-link" id="backLink" href="/">&larr; กลับ</a></p>
+
+  <section class="panel results" id="results" data-job="{{ job_id }}" data-index="{{ index }}">
+    <div class="score-head">
+      <div>
+        <h2>ผลการตรวจ</h2>
+        <p class="sub" id="resultStudent"></p>
+      </div>
+      <div class="score-big"><span id="scoreNow">0</span><span class="score-max" id="scoreMax">/ 0</span></div>
+    </div>
+
+    <div id="warnings"></div>
+
+    <table class="score-table">
+      <thead>
+        <tr>
+          <th>ข้อ</th>
+          <th>คำตอบที่อ่านได้</th>
+          <th class="num">ใกล้เคียง</th>
+          <th class="num">คะแนน</th>
+        </tr>
+      </thead>
+      <tbody id="resultRows"></tbody>
+    </table>
+
+    <div class="save-row">
+      <button type="button" class="primary" id="saveBtn">บันทึกคะแนน</button>
+      <a class="secondary as-button" id="nextLink" href="/one" hidden>ตรวจนักเรียนคนต่อไป</a>
+      <span class="hint" id="saveTarget"></span>
+    </div>
+    <p class="ok-box" id="saveOk" hidden></p>
+    <p class="warn-box" id="saveWarn" hidden></p>
+    <p class="error-box" id="saveError" hidden></p>
+  </section>
+
+  <p class="error-box" id="formError" hidden></p>
+
+{% include "_foot.html" %}

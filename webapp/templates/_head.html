@@ -1,0 +1,49 @@
+<!doctype html>
+<html lang="th">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>ตรวจข้อสอบอูคูเลเล่</title>
+<link rel="stylesheet" href="{{ url_for('static', filename='style.css') }}">
+</head>
+<body data-build="{{ build_id }}" data-page="{{ page }}">
+    <div class="stale-banner" id="staleBanner" hidden>
+      <strong>โปรแกรมถูกอัปเดตหลังจากเปิดหน้าต่างนี้ — ต้องเปิดโปรแกรมใหม่ก่อนใช้งาน</strong>
+      <span><strong>ทำที่เครื่องคอมเท่านั้น</strong> (ถ้ากำลังดูจากมือถือ ต้องไปทำที่คอมที่เปิด
+      โปรแกรมอยู่ กดที่มือถือไม่ได้): 1) ปิดหน้าต่างสีดำ 2) ดับเบิลคลิกไฟล์เดิมที่ใช้เปิด
+      — <em>เปิดโปรแกรมตรวจข้อสอบ.bat</em> หรือ <em>เปิดโปรแกรม (ใช้กับมือถือได้).bat</em>
+      <br>เสร็จแล้วหน้านี้จะโหลดตัวเองใหม่ให้อัตโนมัติภายใน 20 วินาที ไม่ต้องกด F5 เอง
+      — ถ้ายังใช้ต่อทั้งอย่างนี้ หน้าเว็บกับตัวโปรแกรมจะเป็นคนละรุ่นกัน เช่นปุ่ม "ตรวจจริง"
+      กดไม่ได้ทั้งที่ตั้งค่าครบแล้ว</span>
+      <span class="stale-files" id="staleFiles" hidden></span>
+    </div>
+
+
+<header class="topbar">
+  <div class="wrap topbar-inner">
+    <div>
+      <h1><a class="home-link" href="/">ตรวจข้อสอบอูคูเลเล่</a></h1>
+      <p class="sub" id="examLine">กำลังโหลดเฉลย…</p>
+      <!-- เขียนจากเซิร์ฟเวอร์ตรง ๆ ตอน render ไม่ต้องพึ่ง JavaScript เลย — ใช้พิสูจน์ได้จาก
+           สกรีนช็อตภาพเดียวว่าหน้าที่เห็นอยู่มาจากเซิร์ฟเวอร์ตัวไหน ถ้าครูเห็นแถบเตือนค้าง
+           แต่ตัวเลขตรงนี้ไม่ตรงกับที่เซิร์ฟเวอร์ตอบ (เทียบได้จาก /api/status) แปลว่าหน้านี้
+           เป็นแท็บเก่าที่ยังไม่ได้โหลดใหม่จริง ไม่ใช่เซิร์ฟเวอร์มีปัญหา -->
+      <p class="build-tag">รุ่นหน้าเว็บ: {{ build_id }}</p>
+    </div>
+    <button type="button" class="link-btn" id="statusToggle" aria-expanded="false">สถานะระบบ</button>
+  </div>
+</header>
+
+<div class="wrap">
+
+  <section class="panel status-panel" id="statusPanel" hidden>
+    <h2>สถานะระบบตอนนี้</h2>
+    <ul id="statusList"></ul>
+    <p class="hint" id="settingsFileLine"></p>
+    <div id="statusProblems"></div>
+    <!-- log สดของค่าที่ JS ได้รับจริงจาก /api/status ในแท็บนี้ (ต่างจากป้ายรุ่นบนหัวข้อ
+         ที่เซิร์ฟเวอร์เขียนมาตรง ๆ) เคยใช้ไล่หาบั๊กแถบเตือนค้างจนเจอต้นเหตุ เก็บไว้ในแผงนี้
+         ที่พับไว้ตามปกติ ครูกดดูเมื่อต้องการ ไม่รกหน้าจอตอนใช้งานจริง -->
+    <p class="poll-log" id="pollLog" hidden></p>
+  </section>
+

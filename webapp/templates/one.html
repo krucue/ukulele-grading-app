@@ -1,0 +1,61 @@
+{% include "_head.html" %}
+
+  <p><a class="back-link" href="/">&larr; กลับหน้าแรก</a></p>
+
+  <form id="gradeForm" class="grid">
+    <section class="panel">
+      <h2><span class="step">1</span> นักเรียน</h2>
+      <div class="fields">
+        <label>ชื่อ–นามสกุล
+          <input type="text" name="student_name" id="studentName" placeholder="ด.ช. ทดสอบ ใจดี" autocomplete="off">
+        </label>
+        <label class="narrow">เลขที่
+          <input type="text" name="student_no" id="studentNo" placeholder="12" inputmode="numeric" autocomplete="off">
+        </label>
+        <label class="narrow">ชั้น
+          <input type="text" name="student_class" id="studentClass" placeholder="5/2" autocomplete="off">
+        </label>
+      </div>
+    </section>
+
+    <section class="panel">
+      <h2><span class="step">2</span> กระดาษคำตอบ</h2>
+      <p class="hint">สแกนมาเป็น PDF ไฟล์เดียวก็ใส่ได้เลย หรือถ่ายรูปแยกหน้าก็ได้ — เลือกอย่างใดอย่างหนึ่ง</p>
+
+      <div class="drops">
+        <label class="drop drop-pdf" id="dropPdf">
+          <input type="file" id="pdfFile" accept="application/pdf,.pdf">
+          <span class="drop-title">ไฟล์สแกน PDF (ทั้ง 2 หน้าในไฟล์เดียว)</span>
+          <span class="drop-note">ยังไม่ได้เลือกไฟล์</span>
+        </label>
+      </div>
+
+      <p class="or-line"><span>หรือถ่ายรูปแยกทีละหน้า</span></p>
+      <p class="hint">บนมือถือกดแล้วเลือกถ่ายรูปได้เลย · บนคอมลากรูปมาวางหรือคลิกเพื่อเลือกไฟล์ — รองรับ .jpg .png และ .heic จาก iPhone (แปลงให้เอง)</p>
+      <div class="drops">
+        <label class="drop" id="drop1">
+          <input type="file" id="page1" accept="image/jpeg,image/png,image/bmp,image/webp,image/tiff,image/heic,image/heif,.heic,.heif">
+          <span class="drop-title">หน้า 1</span>
+          <span class="drop-note">ยังไม่ได้เลือกไฟล์</span>
+          <img alt="" hidden>
+        </label>
+        <label class="drop" id="drop2">
+          <input type="file" id="page2" accept="image/jpeg,image/png,image/bmp,image/webp,image/tiff,image/heic,image/heif,.heic,.heif">
+          <span class="drop-title">หน้า 2</span>
+          <span class="drop-note">ยังไม่ได้เลือกไฟล์</span>
+          <img alt="" hidden>
+        </label>
+      </div>
+    </section>
+
+    <section class="panel">
+      <h2><span class="step">3</span> เริ่มตรวจ</h2>
+      <p class="hint">ให้ Claude อ่านลายมือจากกระดาษจริง แล้วตรวจให้คะแนนตามเฉลย — ใช้เวลาประมาณ 1 นาที</p>
+      <p class="error-box" id="notReadyBox" hidden></p>
+      <button type="submit" class="primary" id="submitBtn">ตรวจข้อสอบ</button>
+    </section>
+  </form>
+
+  <p class="error-box" id="formError" hidden></p>
+
+{% include "_foot.html" %}

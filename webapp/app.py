@@ -507,11 +507,33 @@ def create_app(settings: AppSettings | None = None, ocr_override=None) -> Flask:
         session.clear()
         return redirect(url_for("login"))
 
+    def _page(template: str, **extra):
+        """ทุกหน้าใช้ทางนี้ทางเดียว — ฝังรหัสรุ่นให้เสมอ
+
+        รหัสรุ่นทำให้หน้าเว็บเทียบกับที่เซิร์ฟเวอร์ตอบมาได้เองว่าตัวเองเป็นหน้าเก่าหรือเปล่า
+        (ดู build_id()) ถ้าลืมฝังในหน้าใดหน้าหนึ่ง หน้านั้นจะค้างเป็นรุ่นเก่าแบบเงียบ ๆ
+        """
+        return render_template(template, build_id=app.config["BUILD_ID"], **extra)
+
     @app.route("/")
     def index():
-        # ฝังรหัสรุ่นลงในหน้า เพื่อให้หน้าเว็บเทียบกับที่เซิร์ฟเวอร์ตอบมาได้เองว่า
-        # ตัวเองเป็นหน้าเก่าหรือเปล่า (ดู build_id())
-        return render_template("index.html", build_id=app.config["BUILD_ID"])
+        return _page("home.html", page="home")
+
+    @app.route("/one")
+    def page_one():
+        return _page("one.html", page="one")
+
+    @app.route("/many")
+    def page_many():
+        return _page("many.html", page="many")
+
+    @app.route("/roster/<job_id>")
+    def page_roster(job_id: str):
+        return _page("roster.html", page="roster", job_id=job_id)
+
+    @app.route("/result/<job_id>/<int:index>")
+    def page_result(job_id: str, index: int):
+        return _page("result.html", page="result", job_id=job_id, index=index)
 
     @app.route("/api/status")
     def api_status():
@@ -775,6 +797,33 @@ def create_app(settings: AppSettings | None = None, ocr_override=None) -> Flask:
         except Exception:  # noqa: BLE001
             return set()
 
+    def _register_single_job(student_name: str, payload: dict) -> dict:
+        """เก็บผลตรวจรายคนเป็นงานที่มีสมาชิกคนเดียว ใช้โครงเดียวกับโหมดตรวจหลายคน"""
+        job = {
+            "id": uuid.uuid4().hex[:12],
+            "work_dir": "",
+            "running": False,
+            "cancelled": False,
+            "problems": [],
+            "single": True,
+            "items": [
+                {
+                    "index": 0,
+                    "student": student_name or "(ไม่ได้กรอกชื่อ)",
+                    "pdf": None,
+                    "pages": {},
+                    "dir": "",
+                    "status": "เสร็จ",
+                    "payload": payload,
+                    "error": "",
+                    "saved": False,
+                    "already": bool(payload.get("already_saved")),
+                }
+            ],
+        }
+        app.config["BATCH_JOBS"][job["id"]] = job
+        return job
+
     @app.route("/api/grade", methods=["POST"])
     def api_grade():
         config = load_exam_config()
@@ -806,7 +855,11 @@ def create_app(settings: AppSettings | None = None, ocr_override=None) -> Flask:
             # ภาพกระดาษคำตอบมีชื่อและลายมือนักเรียน ห้ามค้างอยู่ใน temp
             shutil.rmtree(work_dir, ignore_errors=True)
 
-        return jsonify(payload)
+        # เก็บผลไว้ฝั่งเซิร์ฟเวอร์เป็นงานที่มีคนเดียว เพื่อให้ผลตรวจมี URL ของตัวเอง
+        # (/result/<งาน>/0) หน้าเว็บจึงกดย้อนกลับ/รีเฟรชได้โดยผลไม่หาย และใช้หน้าดูผล
+        # หน้าเดียวกับโหมดตรวจหลายคน ไม่ต้องมีหน้าจอสองชุดที่ต้องแก้ควบคู่กันตลอด
+        job = _register_single_job(student_info["name"], payload)
+        return jsonify({**payload, "job_id": job["id"], "index": 0})
 
     @app.route("/api/save", methods=["POST"])
     def api_save():
@@ -967,7 +1020,8 @@ def create_app(settings: AppSettings | None = None, ocr_override=None) -> Flask:
                 shutil.rmtree(item["dir"], ignore_errors=True)
 
         job["running"] = False
-        shutil.rmtree(job["work_dir"], ignore_errors=True)
+        if job["work_dir"]:
+            shutil.rmtree(job["work_dir"], ignore_errors=True)
 
     def _pages_for_item(item: dict, warnings: list[str]) -> tuple[dict[int, str], bool]:
         if item["pdf"]:
@@ -1005,6 +1059,7 @@ def create_app(settings: AppSettings | None = None, ocr_override=None) -> Flask:
             "running": True,
             "cancelled": False,
             "problems": problems,
+            "single": False,
             "items": [
                 {
                     "index": index,

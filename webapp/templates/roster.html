@@ -1,0 +1,24 @@
+{% include "_head.html" %}
+
+  <p><a class="back-link" href="/">&larr; กลับหน้าแรก</a></p>
+
+  <section class="panel" data-job="{{ job_id }}" id="rosterPanel">
+    <h2>รายชื่อในงานตรวจนี้</h2>
+    <div class="save-row">
+      <button type="button" class="secondary" id="cancelManyBtn" hidden>หยุดตรวจที่เหลือ</button>
+      <button type="button" class="secondary" id="saveAllBtn" hidden>บันทึกทั้งหมด</button>
+      <span class="hint" id="manyProgress">กำลังโหลด…</span>
+    </div>
+    <p class="warn-box" id="saveAllWarn" hidden></p>
+    <p class="ok-box" id="saveAllOk" hidden></p>
+    <p class="error-box" id="manyError" hidden></p>
+    <div id="manyProblems"></div>
+    <table class="roster" id="rosterTable" hidden>
+      <thead>
+        <tr><th>นักเรียน</th><th>สถานะ</th><th class="num">คะแนน</th><th class="num">ต้องดูซ้ำ</th><th></th></tr>
+      </thead>
+      <tbody id="rosterRows"></tbody>
+    </table>
+  </section>
+
+{% include "_foot.html" %}

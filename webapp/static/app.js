@@ -10,13 +10,33 @@ let savedOnce = false;
 
 const $ = (id) => document.getElementById(id);
 
+// หน้าไหนอยู่ — เว็บแยกเป็นหลายหน้าแล้ว ไฟล์นี้ยังเป็นไฟล์เดียว (ไม่มี build step)
+// จึงต้องทนต่อ element ที่ไม่มีในหน้านั้น ๆ แทนที่จะพังทั้งไฟล์เพราะหา id ไม่เจอ
+const PAGE = (document.body.dataset.page || "").trim();
+
+function on(id, event, handler) {
+  const el = $(id);
+  if (el) el.addEventListener(event, handler);
+}
+
+function setText(id, text) {
+  const el = $(id);
+  if (el) el.textContent = text;
+}
+
+function setHidden(id, hidden) {
+  const el = $(id);
+  if (el) el.hidden = hidden;
+}
+
 function show(el, text) {
+  if (!el) return;
   el.textContent = text;
   el.hidden = false;
 }
 
 function hide(el) {
-  el.hidden = true;
+  if (el) el.hidden = true;
 }
 
 // ---------- สถานะระบบ ----------
@@ -31,7 +51,9 @@ let sawStaleServer = false;
 // อยู่เบื้องหลัง ถ้ามันเจอ 401 ตอนครูกำลังไล่แก้คะแนนอยู่แล้วพาออกจากหน้าไปเลย
 // ผลตรวจที่ยังไม่ได้บันทึกหายทั้งชุด ต้องอัปโหลดกระดาษแล้วตรวจใหม่ตั้งแต่ต้น
 function hasUnsavedResults() {
-  return !$("results").hidden && !$("saveBtn").hidden;
+  const results = $("results");
+  const saveBtn = $("saveBtn");
+  return Boolean(results && saveBtn && !results.hidden && !saveBtn.hidden);
 }
 
 // โหลดหน้าใหม่ได้แค่ครั้งเดียวต่อรุ่น — ถ้าโหลดแล้วยังได้ของเก่ากลับมาอีก (เบราว์เซอร์
@@ -113,13 +135,15 @@ async function loadStatus() {
   if (handleLocked(data, "formError")) return;
 
   const exam = data.exam || {};
-  $("examLine").textContent = exam.error
-    ? exam.error
-    : `เฉลย ${exam.exam_id} · ${exam.questions.length} ข้อ · เต็ม ${exam.total_score} คะแนน`;
+  setText(
+    "examLine",
+    exam.error ? exam.error : `เฉลย ${exam.exam_id} · ${exam.questions.length} ข้อ · เต็ม ${exam.total_score} คะแนน`
+  );
 
   const list = $("statusList");
-  list.innerHTML = "";
+  if (list) list.innerHTML = "";
   (data.status_lines || []).forEach((line) => {
+    if (!list) return;
     const li = document.createElement("li");
     li.textContent = line;
     list.appendChild(li);
@@ -128,26 +152,30 @@ async function loadStatus() {
   // ไม่มี settings.json ไม่ได้แปลว่าตรวจจริงไม่ได้อีกต่อไป — ถ้าเครื่องมีคำสั่ง claude
   // ก็ตรวจจริงได้เลยด้วยค่าเริ่มต้น ข้อความตรงนี้จึงต้องดูที่ ready.real ไม่ใช่ดูว่ามีไฟล์ไหม
   if (data.settings_file) {
-    $("settingsFileLine").textContent = `อ่านค่าจาก ${data.settings_file}`;
+    setText("settingsFileLine", `อ่านค่าจาก ${data.settings_file}`);
   } else if (data.ready.real) {
-    $("settingsFileLine").textContent =
+    setText(
+      "settingsFileLine",
       "ยังไม่มีไฟล์ settings.json — ใช้ค่าเริ่มต้นอยู่ ซึ่งตรวจจริงได้แล้ว " +
-      "(สร้าง settings.json เมื่อจะเปลี่ยนที่เก็บผล หรือใส่ anthropic_api_key ให้เร็วขึ้น)";
+        "(สร้าง settings.json เมื่อจะเปลี่ยนที่เก็บผล หรือใส่ anthropic_api_key ให้เร็วขึ้น)"
+    );
   } else {
-    $("settingsFileLine").textContent =
+    setText(
+      "settingsFileLine",
       "ยังไม่มีไฟล์ settings.json และเครื่องนี้ยังไม่มีคำสั่ง claude — ตรวจจริงยังไม่ได้ " +
-      "ให้ติดตั้ง Claude Code แล้วล็อกอิน หรือคัดลอก settings.example.json เป็น settings.json " +
-      "แล้วใส่ anthropic_api_key";
+        "ให้ติดตั้ง Claude Code แล้วล็อกอิน หรือคัดลอก settings.example.json เป็น settings.json " +
+        "แล้วใส่ anthropic_api_key"
+    );
   }
 
   const problemBox = $("statusProblems");
-  problemBox.innerHTML = "";
+  if (problemBox) problemBox.innerHTML = "";
   const problems = (data.problems || []).concat(exam.problems || []);
   problems.forEach((p) => {
     const div = document.createElement("div");
     div.className = "warn-box";
     div.textContent = p;
-    problemBox.appendChild(div);
+    if (problemBox) problemBox.appendChild(div);
   });
   if (problems.length > 0) {
     $("statusPanel").hidden = false;
@@ -172,30 +200,32 @@ async function loadStatus() {
     return;
   }
   if (data.stale_server) sawStaleServer = true;
-  $("staleBanner").hidden = !data.stale_server;
+  setHidden("staleBanner", !data.stale_server);
 
   // บอกชื่อไฟล์ที่เนื้อไม่ตรงกับตอนเปิดโปรแกรม — เคยเจอแถบนี้เด้งค้างแล้วหาสาเหตุ
   // ไม่เจอเลย ได้แต่เดากันไปมา มีชื่อไฟล์ให้ดูจะตัดปัญหานั้นทิ้งไปได้
-  const staleFiles = $("staleFiles");
   const files = data.stale_files || [];
-  staleFiles.hidden = !data.stale_server || files.length === 0;
-  staleFiles.textContent = files.length ? `ไฟล์ที่เปลี่ยน: ${files.join(", ")}` : "";
+  setHidden("staleFiles", !data.stale_server || files.length === 0);
+  setText("staleFiles", files.length ? `ไฟล์ที่เปลี่ยน: ${files.join(", ")}` : "");
 
-  $("saveTarget").textContent = `จะบันทึกลง: ${data.sheet_target}`;
+  setText("saveTarget", `จะบันทึกลง: ${data.sheet_target}`);
 
   // ไม่มีโหมดลองใช้งานแล้ว มีแต่ตรวจจริงทางเดียว — ถ้าเครื่องยังตรวจไม่ได้ต้องปิดปุ่ม
   // แล้วบอกเหตุผลตรงนั้นเลย ไม่ใช่ปล่อยให้กดแล้วไปเจอ error ตอนอัปโหลดเสร็จ
   const ready = data.ready.ocr;
-  $("submitBtn").disabled = !ready;
-  $("notReadyBox").hidden = ready;
+  const submit = $("submitBtn");
+  if (submit) submit.disabled = !ready;
+  setHidden("notReadyBox", ready);
   if (!ready) {
-    $("notReadyBox").textContent =
+    setText(
+      "notReadyBox",
       "ยังตรวจไม่ได้ — ต้องมีอย่างใดอย่างหนึ่ง: ติดตั้ง Claude Code แล้วล็อกอิน (คำสั่ง claude) " +
-      "หรือตั้ง anthropic_api_key ใน settings.json";
+        "หรือตั้ง anthropic_api_key ใน settings.json"
+    );
   }
 }
 
-$("statusToggle").addEventListener("click", () => {
+on("statusToggle", "click", () => {
   const panel = $("statusPanel");
   panel.hidden = !panel.hidden;
   $("statusToggle").setAttribute("aria-expanded", String(!panel.hidden));
@@ -268,37 +298,11 @@ setupDrop("dropPdf", "pdfFile", clearPhotoDrops);
 
 // ---------- วนตรวจคนถัดไป ----------
 
-// ครูตรวจทั้งห้องรวดเดียว ไม่ใช่คนเดียวจบ — หลังบันทึกแล้วต้องล้างของคนเก่าให้หมด
-// ทั้งชื่อและไฟล์ ไม่งั้นเผลอกดตรวจอีกทีจะได้กระดาษของคนก่อนหน้าติดมาด้วย
-function resetForNextStudent() {
-  savedOnce = false;
-  lastGrading = null;
-
-  ["studentName", "studentNo", "studentClass"].forEach((id) => {
-    $(id).value = "";
-  });
-  clearPhotoDrops();
-  clearPdfDrop();
-
-  $("results").hidden = true;
-  $("resultRows").innerHTML = "";
-  $("warnings").innerHTML = "";
-  hide($("formError"));
-  hide($("saveOk"));
-  hide($("saveWarn"));
-  hide($("saveError"));
-  $("saveBtn").hidden = false;
-  $("nextBtn").hidden = true;
-
-  window.scrollTo({ top: 0, behavior: "smooth" });
-  $("studentName").focus();
-}
-
 // แก้คะแนนหลังบันทึกไปแล้ว = ต้องบันทึกใหม่ แต่ครูต้องรู้ว่ามันเพิ่มแถว ไม่ได้ทับ
 function scoreChangedAfterSave() {
   if (!savedOnce) return;
   savedOnce = false;
-  $("saveBtn").hidden = false;
+  setHidden("saveBtn", false);
   hide($("saveOk"));
   show(
     $("saveWarn"),
@@ -307,24 +311,15 @@ function scoreChangedAfterSave() {
   );
 }
 
-$("nextBtn").addEventListener("click", () => {
-  // หลุดจากรายชื่อของงานตรวจทั้งห้อง ไม่งั้นคนถัดไปจะถูกบันทึกทับลำดับของคนเก่า
-  openItemIndex = null;
-  resetForNextStudent();
-});
-
 // ---------- ตรวจข้อสอบ ----------
 
-$("gradeForm").addEventListener("submit", async (e) => {
+on("gradeForm", "submit", async (e) => {
   e.preventDefault();
   hide($("formError"));
   hide($("saveOk"));
   hide($("saveWarn"));
   hide($("saveError"));
-  // ผลชุดใหม่ = ยังไม่ได้บันทึก ต้องเอาปุ่มบันทึกกลับมาเสมอ
   savedOnce = false;
-  $("saveBtn").hidden = false;
-  $("nextBtn").hidden = true;
 
   const body = new FormData();
   body.append("student_name", $("studentName").value);
@@ -355,8 +350,9 @@ $("gradeForm").addEventListener("submit", async (e) => {
       show($("formError"), data.error || `ตรวจไม่สำเร็จ (รหัส ${res.status})`);
       return;
     }
-    lastGrading = data;
-    renderResults(data);
+    // ผลตรวจมี URL ของตัวเองแล้ว ไปหน้านั้นเลย — กดย้อนกลับหรือรีเฟรชได้โดยผลไม่หาย
+    window.location.href = `/result/${data.job_id}/${data.index}`;
+    return;
   } catch (err) {
     show($("formError"), `ตรวจไม่สำเร็จ: ${err.message}`);
   } finally {
@@ -484,7 +480,7 @@ function renderResults(data) {
 
 // ---------- บันทึก ----------
 
-$("saveBtn").addEventListener("click", async () => {
+on("saveBtn", "click", async () => {
   if (!lastGrading || savedOnce) return;
   hide($("saveOk"));
   hide($("saveWarn"));
@@ -533,11 +529,12 @@ $("saveBtn").addEventListener("click", async () => {
     // แล้วเปิดทางไปคนต่อไปให้ตรงนั้นเลย ครูจะได้ไม่ต้องรีเฟรชหน้าเอง
     savedOnce = true;
     btn.hidden = true;
-    $("nextBtn").hidden = false;
-
-    // อัปเดตรายชื่อทันที — พอตรวจทั้งห้องจบแล้ว การถามความคืบหน้าจะหยุดไป
-    // ถ้าไม่สั่งตรงนี้ แถวของคนที่เพิ่งบันทึกจะยังขึ้นว่า "ดูคำตอบ" เหมือนไม่มีอะไรเกิดขึ้น
-    if (batchJobId) await refreshRoster();
+    // บันทึกแล้วเปิดทางไปต่อ — งานคนเดียวไปตรวจคนใหม่ ส่วนงานทั้งห้องกลับไปรายชื่อ
+    setHidden("nextLink", false);
+    const back = $("backLink");
+    if (back && lastGrading && !lastGrading.single) {
+      back.textContent = "← กลับไปที่รายชื่อ (บันทึกคนนี้แล้ว)";
+    }
   } catch (err) {
     show($("saveError"), `บันทึกไม่สำเร็จ: ${err.message}`);
   } finally {
@@ -564,37 +561,26 @@ window.addEventListener("focus", () => {
   loadStatus();
 });
 
-// ---------- ตรวจหลายคน ----------
+// ---------- ตรวจหลายคน: หน้ารายชื่อ ----------
 //
-// งานอยู่ฝั่งเซิร์ฟเวอร์ หน้าเว็บแค่ถามความคืบหน้าเป็นระยะ ครูจึงปิดแท็บหรือดับจอมือถือ
-// ระหว่างรอได้ กลับมาเปิดใหม่แล้วกดต่อจากรายชื่อเดิมได้ (จำ job_id ไว้ใน sessionStorage)
+// เว็บแยกเป็นหลายหน้าแล้ว งานตรวจจึงระบุด้วย URL (/roster/<งาน>) ไม่ใช่ตัวแปรในหน้า
+// ครูจึงบุ๊กมาร์ก ส่งลิงก์ หรือกดย้อนกลับได้ตามปกติ และปิดแท็บแล้วเปิดใหม่ก็ยังกลับมาที่เดิม
 
 let batchJobId = null;
 let batchTimer = null;
-// ครูเปิดดูคำตอบของใครอยู่ในตอนนี้ — ใช้ผูกตอนกดบันทึกว่าเป็นของลำดับไหนในรายชื่อ
+// ครูเปิดดูคำตอบของใครอยู่ — ใช้ผูกตอนกดบันทึกว่าเป็นของลำดับไหนในรายชื่อ
 let openItemIndex = null;
 
+// จำงานล่าสุดไว้ เพื่อให้หน้าแรกเสนอ "กลับไปที่รายชื่อ" ได้ถ้าครูเผลอปิดแท็บ
 const BATCH_KEY = "ukulele-batch-job";
 
-function setWay(many) {
-  $("wayOne").classList.toggle("is-on", !many);
-  $("wayMany").classList.toggle("is-on", many);
-  $("gradeForm").hidden = many;
-  $("manyPanel").hidden = !many;
-  // ผลของคนก่อนหน้าไม่ควรค้างข้ามโหมด ครูจะแยกไม่ออกว่าเป็นของใคร
-  $("results").hidden = true;
-  hide($("formError"));
+function rememberBatch(jobId) {
+  try {
+    window.sessionStorage.setItem(BATCH_KEY, jobId);
+  } catch (err) {
+    // โหมดส่วนตัวปิด sessionStorage — ยังตรวจต่อได้ แค่หน้าแรกจะไม่เสนอให้กลับไปต่อ
+  }
 }
-
-$("wayOne").addEventListener("click", () => setWay(false));
-$("wayMany").addEventListener("click", () => setWay(true));
-
-$("manyFiles").addEventListener("change", () => {
-  const files = $("manyFiles").files;
-  const note = $("dropMany").querySelector(".drop-note");
-  note.textContent = files.length ? `เลือกไว้ ${files.length} ไฟล์` : "ยังไม่ได้เลือกไฟล์";
-  $("dropMany").classList.toggle("filled", files.length > 0);
-});
 
 function pill(status) {
   const map = { รอตรวจ: "wait", กำลังตรวจ: "run", เสร็จ: "done", พลาด: "fail", ยกเลิก: "wait" };
@@ -604,26 +590,64 @@ function pill(status) {
   return span;
 }
 
+function saveableItems(job) {
+  return (job.items || []).filter((i) => i.status === "เสร็จ" && !i.saved);
+}
+
+// ต้องกดสองครั้งถึงจะบันทึกจริง — ตั้งใจให้เป็นแบบนี้เพราะบันทึกทั้งหมดคือการข้ามขั้น
+// "เข้าไปดูคำตอบทีละคน" ซึ่งเป็นขั้นที่กันคะแนนผิดจาก OCR อ่านลายมือพลาด
+let saveAllArmed = false;
+
+function refreshSaveAllButton(job) {
+  const btn = $("saveAllBtn");
+  if (!btn) return;
+  const pending = saveableItems(job);
+  btn.hidden = pending.length === 0;
+  if (pending.length === 0) {
+    saveAllArmed = false;
+    hide($("saveAllWarn"));
+    return;
+  }
+  const needReview = pending.filter((i) => i.needs_review).length;
+  if (saveAllArmed) {
+    btn.textContent = `ยืนยันบันทึก ${pending.length} คน`;
+    show(
+      $("saveAllWarn"),
+      needReview > 0
+        ? `ใน ${pending.length} คนนี้ มี ${needReview} คนที่ยังมีข้อที่ระบบไม่มั่นใจ ` +
+            "และยังไม่ได้เปิดดูคำตอบ — กดยืนยันแล้วคะแนนจะลงชีตตามที่ระบบตรวจมาเลย"
+        : `จะบันทึก ${pending.length} คนลงชีตตามคะแนนที่ระบบตรวจมา — กดยืนยันอีกครั้ง`
+    );
+  } else {
+    btn.textContent = `บันทึกทั้งหมด (${pending.length} คน)`;
+    hide($("saveAllWarn"));
+  }
+}
+
 function renderRoster(job) {
-  $("rosterTable").hidden = false;
-  $("manyProgress").textContent = job.running
-    ? `ตรวจแล้ว ${job.done} / ${job.total} คน — กำลังตรวจต่อ`
-    : `ตรวจครบ ${job.done} / ${job.total} คนแล้ว`;
-  $("cancelManyBtn").hidden = !job.running;
-  $("startManyBtn").disabled = job.running;
-
-  const problemBox = $("manyProblems");
-  problemBox.innerHTML = "";
-  (job.problems || []).forEach((p) => {
-    const div = document.createElement("div");
-    div.className = "warn-box";
-    div.textContent = p;
-    problemBox.appendChild(div);
-  });
-
+  setHidden("rosterTable", false);
+  setText(
+    "manyProgress",
+    job.running
+      ? `ตรวจแล้ว ${job.done} / ${job.total} คน — กำลังตรวจต่อ`
+      : `ตรวจครบ ${job.done} / ${job.total} คนแล้ว`
+  );
+  setHidden("cancelManyBtn", !job.running);
   refreshSaveAllButton(job);
 
+  const problemBox = $("manyProblems");
+  if (problemBox) {
+    problemBox.innerHTML = "";
+    (job.problems || []).forEach((p) => {
+      const div = document.createElement("div");
+      div.className = "warn-box";
+      div.textContent = p;
+      problemBox.appendChild(div);
+    });
+  }
+
   const body = $("rosterRows");
+  if (!body) return;
   body.innerHTML = "";
   job.items.forEach((item) => {
     const tr = document.createElement("tr");
@@ -661,57 +685,49 @@ function renderRoster(job) {
     tdFlag.textContent = item.status === "เสร็จ" ? `${item.flagged} ข้อ` : "—";
 
     const tdOpen = document.createElement("td");
-    const btn = document.createElement("button");
-    btn.type = "button";
-    btn.textContent = item.saved ? "ดูอีกครั้ง" : "ดูคำตอบ";
-    btn.disabled = item.status !== "เสร็จ";
-    btn.addEventListener("click", () => openBatchItem(item.index));
-    tdOpen.appendChild(btn);
+    if (item.status === "เสร็จ") {
+      // ลิงก์จริง ไม่ใช่ปุ่ม — ครูจะได้เปิดแท็บใหม่/กดย้อนกลับได้ตามที่เคยชิน
+      const link = document.createElement("a");
+      link.className = "as-button";
+      link.href = `/result/${batchJobId}/${item.index}`;
+      link.textContent = item.saved ? "ดูอีกครั้ง" : "ดูคำตอบ";
+      tdOpen.appendChild(link);
+    } else {
+      const waiting = document.createElement("span");
+      waiting.className = "qlabel";
+      waiting.textContent = item.status === "พลาด" ? "เปิดดูไม่ได้" : "รออยู่";
+      tdOpen.appendChild(waiting);
+    }
 
     tr.append(tdName, tdStatus, tdScore, tdFlag, tdOpen);
     body.appendChild(tr);
   });
 }
 
-// ดึงรายชื่อล่าสุดมาวาดใหม่ — ใช้หลังบันทึก ไม่ต้องรอรอบถามความคืบหน้าถัดไป
-// (ซึ่งหยุดไปแล้วเมื่อตรวจครบทุกคน)
 async function refreshRoster() {
-  if (!batchJobId) return;
+  if (!batchJobId) return null;
   try {
     const res = await fetch(`/api/batch/${batchJobId}`);
     const job = await res.json();
-    if (res.ok) renderRoster(job);
-  } catch (err) {
-    // อัปเดตรายชื่อไม่สำเร็จไม่ใช่เรื่องคอขาดบาดตาย คะแนนบันทึกลงชีตไปแล้ว
-  }
-}
-
-async function pollBatch() {
-  if (!batchJobId) return;
-  let job;
-  try {
-    const res = await fetch(`/api/batch/${batchJobId}`);
-    job = await res.json();
-    if (handleLocked(job, "manyError")) return;
+    if (handleLocked(job, "manyError")) return null;
     if (!res.ok) {
-      show($("manyError"), job.error || "ถามความคืบหน้าไม่สำเร็จ");
+      show($("manyError"), job.error || "อ่านรายชื่อไม่สำเร็จ");
       stopBatchPolling();
-      // งานหายไปแล้ว (เช่นเปิดโปรแกรมใหม่) อย่าจำ job เก่าไว้ให้ครูสับสน
-      forgetBatch();
-      return;
+      return null;
     }
+    renderRoster(job);
+    if (!job.running) stopBatchPolling();
+    return job;
   } catch (err) {
-    show($("manyError"), `ถามความคืบหน้าไม่สำเร็จ: ${err.message}`);
-    return;
+    show($("manyError"), `อ่านรายชื่อไม่สำเร็จ: ${err.message}`);
+    return null;
   }
-  renderRoster(job);
-  if (!job.running) stopBatchPolling();
 }
 
 function startBatchPolling() {
   stopBatchPolling();
   // 3 วินาทีพอ — งานหนึ่งคนใช้เวลาราวนาที ถามถี่กว่านี้ไม่ได้ข้อมูลใหม่เพิ่ม
-  batchTimer = setInterval(pollBatch, 3000);
+  batchTimer = setInterval(refreshRoster, 3000);
 }
 
 function stopBatchPolling() {
@@ -719,25 +735,16 @@ function stopBatchPolling() {
   batchTimer = null;
 }
 
-function rememberBatch(jobId) {
-  batchJobId = jobId;
-  try {
-    window.sessionStorage.setItem(BATCH_KEY, jobId);
-  } catch (err) {
-    // โหมดส่วนตัวปิด sessionStorage — ยังตรวจต่อได้ แค่ปิดแท็บแล้วกลับมาต่อไม่ได้
-  }
-}
+// ---------- หน้าเลือกไฟล์ของทั้งห้อง ----------
 
-function forgetBatch() {
-  batchJobId = null;
-  try {
-    window.sessionStorage.removeItem(BATCH_KEY);
-  } catch (err) {
-    /* ไม่เป็นไร */
-  }
-}
+on("manyFiles", "change", () => {
+  const files = $("manyFiles").files;
+  const note = $("dropMany").querySelector(".drop-note");
+  note.textContent = files.length ? `เลือกไว้ ${files.length} ไฟล์` : "ยังไม่ได้เลือกไฟล์";
+  $("dropMany").classList.toggle("filled", files.length > 0);
+});
 
-$("startManyBtn").addEventListener("click", async () => {
+on("startManyBtn", "click", async () => {
   hide($("manyError"));
   const files = $("manyFiles").files;
   if (!files.length) {
@@ -759,8 +766,8 @@ $("startManyBtn").addEventListener("click", async () => {
       return;
     }
     rememberBatch(job.job_id);
-    renderRoster(job);
-    startBatchPolling();
+    // ไปหน้ารายชื่อ ซึ่งมี URL ของตัวเอง ครูบุ๊กมาร์กหรือส่งลิงก์ให้ตัวเองได้
+    window.location.href = `/roster/${job.job_id}`;
   } catch (err) {
     show($("manyError"), `เริ่มตรวจไม่สำเร็จ: ${err.message}`);
   } finally {
@@ -769,7 +776,7 @@ $("startManyBtn").addEventListener("click", async () => {
   }
 });
 
-$("cancelManyBtn").addEventListener("click", async () => {
+on("cancelManyBtn", "click", async () => {
   if (!batchJobId) return;
   // หยุดเฉพาะคนที่ยังไม่ได้ตรวจ คนที่ตรวจไปแล้วยังอยู่ในรายชื่อให้เข้าไปบันทึกได้
   const res = await fetch(`/api/batch/${batchJobId}/cancel`, { method: "POST" });
@@ -777,88 +784,11 @@ $("cancelManyBtn").addEventListener("click", async () => {
   if (res.ok) renderRoster(job);
 });
 
-async function openBatchItem(index) {
-  hide($("manyError"));
-  try {
-    const res = await fetch(`/api/batch/${batchJobId}/item/${index}`);
-    const data = await res.json();
-    if (handleLocked(data, "manyError")) return;
-    if (!res.ok) {
-      show($("manyError"), data.error || "เปิดดูคำตอบไม่สำเร็จ");
-      return;
-    }
-    openItemIndex = index;
-    // บอกให้ชัดว่าปุ่มนี้บันทึกเฉพาะคนที่เปิดอยู่ ไม่ใช่ทั้งห้อง
-    $("saveBtn").textContent = `บันทึกเฉพาะ ${data.student.name || "คนนี้"}`;
-    savedOnce = data.saved === true;
-    lastGrading = data;
-    renderResults(data);
-    // บันทึกไปแล้วต้องไม่ให้กดซ้ำ เพราะ /api/save ต่อแถวใหม่เสมอ ไม่ได้ทับแถวเดิม
-    $("saveBtn").hidden = savedOnce;
-    if (savedOnce) {
-      show($("saveWarn"), "คนนี้บันทึกลงชีตไปแล้ว — กดบันทึกซ้ำจะได้ 2 แถว");
-    }
-  } catch (err) {
-    show($("manyError"), `เปิดดูคำตอบไม่สำเร็จ: ${err.message}`);
-  }
-}
-
-// เปิดแท็บใหม่หรือกลับมาหลังปิดจอ — ต่อจากงานเดิมที่ยังค้างอยู่
-try {
-  const saved = window.sessionStorage.getItem(BATCH_KEY);
-  if (saved) {
-    batchJobId = saved;
-    setWay(true);
-    pollBatch();
-    startBatchPolling();
-  }
-} catch (err) {
-  /* sessionStorage ใช้ไม่ได้ ก็แค่เริ่มใหม่ */
-}
-
-// ---------- บันทึกทั้งหมดในครั้งเดียว ----------
+// ---------- บันทึกทั้งหมด ----------
 //
 // วนเรียก /api/save ทีละคนด้วยเส้นทางเดียวกับตอนบันทึกคนเดียว ไม่ทำ endpoint ใหม่
 // เพราะสูตรคิดสถานะ (ครูตรวจแล้ว / ต้องตรวจสอบ / ผ่านอัตโนมัติ) อยู่ที่เดียวใน /api/save
 // ถ้าทำทางลัดฝั่งเซิร์ฟเวอร์อีกเส้น วันหนึ่งจะแก้เกณฑ์ที่เดียวแล้วอีกเส้นไม่ตาม
-// แล้วคะแนนที่บันทึกด้วยสองวิธีจะมีสถานะคนละแบบโดยไม่มีอะไรฟ้อง
-//
-// คนที่บันทึกไปแล้วถูกข้าม เพราะ /api/save ต่อแถวใหม่เสมอ ไม่ได้ทับแถวเดิม
-// กดซ้ำจึงต้องไม่ทำให้ได้ 2 แถวของคนเดียวกัน
-
-// ต้องกดสองครั้งถึงจะบันทึกจริง — ตั้งใจให้เป็นแบบนี้เพราะบันทึกทั้งหมดคือการข้ามขั้น
-// "เข้าไปดูคำตอบทีละคน" ซึ่งเป็นขั้นที่กันคะแนนผิดจาก OCR อ่านลายมือพลาด
-let saveAllArmed = false;
-
-function saveableItems(job) {
-  return (job.items || []).filter((i) => i.status === "เสร็จ" && !i.saved);
-}
-
-function refreshSaveAllButton(job) {
-  const pending = saveableItems(job);
-  const btn = $("saveAllBtn");
-  btn.hidden = pending.length === 0;
-  if (pending.length === 0) {
-    saveAllArmed = false;
-    hide($("saveAllWarn"));
-    return;
-  }
-  const needReview = pending.filter((i) => i.needs_review).length;
-  if (saveAllArmed) {
-    btn.textContent = `ยืนยันบันทึก ${pending.length} คน`;
-    show(
-      $("saveAllWarn"),
-      needReview > 0
-        ? `ใน ${pending.length} คนนี้ มี ${needReview} คนที่ยังมีข้อที่ระบบไม่มั่นใจ ` +
-            "และยังไม่ได้เปิดดูคำตอบ — กดยืนยันแล้วคะแนนจะลงชีตตามที่ระบบตรวจมาเลย " +
-            "กดปุ่มอื่นหรือรอสักครู่เพื่อยกเลิก"
-        : `จะบันทึก ${pending.length} คนลงชีตตามคะแนนที่ระบบตรวจมา — กดยืนยันอีกครั้ง`
-    );
-  } else {
-    btn.textContent = `บันทึกทั้งหมด (${pending.length} คน)`;
-    hide($("saveAllWarn"));
-  }
-}
 
 async function saveOneFromRoster(index) {
   const detailRes = await fetch(`/api/batch/${batchJobId}/item/${index}`);
@@ -870,7 +800,6 @@ async function saveOneFromRoster(index) {
     headers: { "Content-Type": "application/json" },
     body: JSON.stringify({
       student: detail.student,
-      // ส่งผลตามที่ระบบตรวจมาทั้งชุด ไม่มีการแก้จากครู (ยังไม่ได้เปิดดู)
       results: detail.results,
       job_id: batchJobId,
       item_index: index,
@@ -881,23 +810,15 @@ async function saveOneFromRoster(index) {
   return saved;
 }
 
-$("saveAllBtn").addEventListener("click", async () => {
+on("saveAllBtn", "click", async () => {
   hide($("saveAllOk"));
   hide($("manyError"));
   if (!batchJobId) return;
 
-  const statusRes = await fetch(`/api/batch/${batchJobId}`);
-  const job = await statusRes.json();
-  if (handleLocked(job, "manyError")) return;
-  if (!statusRes.ok) {
-    show($("manyError"), job.error || "อ่านรายชื่อไม่สำเร็จ");
-    return;
-  }
+  const job = await refreshRoster();
+  if (!job) return;
   const pending = saveableItems(job);
-  if (pending.length === 0) {
-    renderRoster(job);
-    return;
-  }
+  if (pending.length === 0) return;
 
   if (!saveAllArmed) {
     saveAllArmed = true;
@@ -930,3 +851,72 @@ $("saveAllBtn").addEventListener("click", async () => {
     show($("saveAllOk"), `บันทึกลงชีตแล้ว ${done} คน`);
   }
 });
+
+// ---------- เริ่มทำงานตามหน้าที่อยู่ ----------
+
+if (PAGE === "roster") {
+  batchJobId = $("rosterPanel").dataset.job;
+  rememberBatch(batchJobId);
+  refreshRoster().then((job) => {
+    if (job && job.running) startBatchPolling();
+  });
+}
+
+if (PAGE === "result") {
+  const box = $("results");
+  batchJobId = box.dataset.job;
+  openItemIndex = Number(box.dataset.index);
+  // งานที่มีคนเดียว (ตรวจรายคน) ไม่ต้องมีลิงก์กลับไปหน้ารายชื่อ
+  fetch(`/api/batch/${batchJobId}/item/${openItemIndex}`)
+    .then((res) => res.json().then((data) => ({ ok: res.ok, data })))
+    .then(({ ok, data }) => {
+      if (handleLocked(data, "formError")) return;
+      if (!ok) {
+        show($("formError"), data.error || "เปิดผลตรวจไม่สำเร็จ");
+        return;
+      }
+      lastGrading = data;
+      savedOnce = data.saved === true;
+      renderResults(data);
+      const back = $("backLink");
+      if (back && !data.single) {
+        back.href = `/roster/${batchJobId}`;
+        back.textContent = "← กลับไปที่รายชื่อ";
+      }
+      setHidden("nextLink", !data.single);
+      if (savedOnce) {
+        setHidden("saveBtn", true);
+        show($("saveWarn"), "คนนี้บันทึกลงชีตไปแล้ว — กดบันทึกซ้ำจะได้ 2 แถว");
+      }
+    })
+    .catch((err) => show($("formError"), `เปิดผลตรวจไม่สำเร็จ: ${err.message}`));
+}
+
+if (PAGE === "home") {
+  // เคยเริ่มตรวจทั้งห้องไว้แล้วปิดแท็บไป — เสนอให้กลับไปต่อ
+  try {
+    const saved = window.sessionStorage.getItem(BATCH_KEY);
+    if (saved) {
+      fetch(`/api/batch/${saved}`)
+        .then((res) => res.json().then((data) => ({ ok: res.ok, data })))
+        .then(({ ok, data }) => {
+          if (!ok || !data.items) return;
+          setHidden("resumePanel", false);
+          setText(
+            "resumeNote",
+            data.running
+              ? `กำลังตรวจอยู่ ${data.done} / ${data.total} คน`
+              : `ตรวจครบ ${data.done} / ${data.total} คนแล้ว ` +
+                  `ยังไม่ได้บันทึก ${saveableItems(data).length} คน`
+          );
+          const link = $("resumeLink");
+          if (link) link.href = `/roster/${saved}`;
+        })
+        .catch(() => {
+          /* งานหายไปแล้ว ไม่ต้องเสนอ */
+        });
+    }
+  } catch (err) {
+    /* sessionStorage ใช้ไม่ได้ ก็แค่ไม่เสนอ */
+  }
+}

@@ -1,0 +1,26 @@
+{% include "_head.html" %}
+
+  <section class="panel">
+    <h2>ตรวจแบบไหน</h2>
+    <div class="ways">
+      <a class="way" href="/one">
+        <strong>ตรวจรายคน</strong>
+        <em>กรอกชื่อเอง แนบกระดาษของคนเดียว เห็นผลแล้วแก้คะแนนได้ทันที</em>
+      </a>
+      <a class="way" href="/many">
+        <strong>ตรวจหลายคน</strong>
+        <em>เลือกไฟล์ทีเดียวหลายคน <strong>ชื่อไฟล์จะกลายเป็นชื่อนักเรียน</strong>
+        ระบบตรวจไปทีละคน แล้วครูเข้าไปดูคำตอบทีละคนก่อนบันทึก</em>
+      </a>
+    </div>
+    <p class="error-box" id="notReadyBox" hidden></p>
+  </section>
+
+  <!-- งานตรวจที่ยังค้างอยู่ — โผล่เองถ้าเคยเริ่มตรวจทั้งห้องไว้แล้วปิดแท็บไป -->
+  <section class="panel" id="resumePanel" hidden>
+    <h2>งานที่ค้างอยู่</h2>
+    <p class="hint" id="resumeNote"></p>
+    <a class="way" id="resumeLink" href="#"><strong>กลับไปที่รายชื่อ</strong></a>
+  </section>
+
+{% include "_foot.html" %}

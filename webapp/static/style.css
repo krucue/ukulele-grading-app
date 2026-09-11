@@ -419,3 +419,25 @@ input.score-input.edited { border-color: var(--ochre); background: #FFFBF4; }
   font-size: 12px;
   color: var(--ochre);
 }
+
+/* ---------- เว็บแยกเป็นหลายหน้า ---------- */
+.home-link { color: inherit; text-decoration: none; }
+.home-link:hover { text-decoration: underline; }
+
+.back-link {
+  display: inline-block; margin: 0 0 4px; color: var(--ink);
+  font-size: 14px; text-decoration: none;
+}
+.back-link:hover { text-decoration: underline; }
+
+/* ปุ่มที่เป็นลิงก์จริง — ครูจะได้เปิดแท็บใหม่/กดย้อนกลับได้ตามที่เคยชิน */
+.as-button {
+  display: inline-block; font: inherit; font-size: 14px; text-decoration: none;
+  padding: 6px 14px; border: 1px solid var(--ink); border-radius: 8px;
+  background: #fff; color: var(--ink); cursor: pointer;
+}
+.as-button:hover { background: #F1F6F4; }
+
+/* การ์ดเลือกวิธีตรวจบนหน้าแรก เป็นลิงก์ไม่ใช่ปุ่มแล้ว */
+a.way { text-decoration: none; display: block; }
+a.way:hover { border-color: var(--ink); background: #F1F6F4; }

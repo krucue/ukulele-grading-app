@@ -1,0 +1,30 @@
+{% include "_head.html" %}
+
+  <p><a class="back-link" href="/">&larr; กลับหน้าแรก</a></p>
+
+  <section class="panel">
+    <h2>เลือกกระดาษของทั้งห้อง</h2>
+    <p class="hint">เลือกได้ทีเดียวหลายไฟล์ · <strong>ชื่อไฟล์จะกลายเป็นชื่อนักเรียน</strong>
+    (แก้ได้อีกทีตอนเข้าไปดูคำตอบก่อนบันทึก)</p>
+    <ul class="hint rules">
+      <li>สแกนเป็น PDF: <strong>1 ไฟล์ = 1 คน</strong> เช่น <code>929.pdf</code> <code>Parn.pdf</code></li>
+      <li>ถ่ายรูปแยกหน้า: ตั้งชื่อลงท้ายด้วย 1 กับ 2 ของชื่อเดียวกัน เช่น
+        <code>948P1.jpg</code> คู่กับ <code>948P2.jpg</code></li>
+    </ul>
+
+    <label class="drop drop-pdf" id="dropMany">
+      <input type="file" id="manyFiles" multiple
+             accept="application/pdf,.pdf,image/jpeg,image/png,image/heic,image/heif,.heic,.heif">
+      <span class="drop-title">เลือกไฟล์ของทั้งห้อง</span>
+      <span class="drop-note">ยังไม่ได้เลือกไฟล์</span>
+    </label>
+
+    <p class="hint">ตรวจไปทีละคน ใช้เวลาราว 1 นาทีต่อคน —
+    <strong>ปิดหน้านี้ระหว่างรอได้</strong> กลับมาเปิดใหม่แล้วผลที่ตรวจไปแล้วยังอยู่
+    (แต่ห้ามปิดหน้าต่างสีดำ)</p>
+    <p class="error-box" id="notReadyBox" hidden></p>
+    <button type="button" class="primary" id="startManyBtn">เริ่มตรวจทั้งห้อง</button>
+    <p class="error-box" id="manyError" hidden></p>
+  </section>
+
+{% include "_foot.html" %}
