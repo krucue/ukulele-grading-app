@@ -401,6 +401,9 @@ input.score-input.edited { border-color: var(--ochre); background: #FFFBF4; }
 .pill.run { background: #FDF3E7; border-color: var(--flag-border); color: #7A4E17; }
 .pill.done { background: #EDF5F0; border-color: #BEDCCB; color: var(--ok); }
 .pill.fail { background: #FBEDEA; border-color: #E6C0BA; color: var(--error); }
+/* บันทึกลงชีตแล้ว — เข้มกว่า "เสร็จ" เพราะเป็นคนละเรื่องกัน: เสร็จ = ตรวจเสร็จแต่คะแนน
+   ยังไม่ได้ลงชีต ถ้าสองสถานะนี้หน้าตาเหมือนกัน ครูจะแยกไม่ออกว่าเหลือใครต้องบันทึกอีก */
+.pill.saved { background: #DCEDE3; border-color: #9CC9AE; color: #1F6B42; font-weight: 600; }
 
 .roster button {
   font: inherit; font-size: 14px; cursor: pointer; padding: 6px 14px;

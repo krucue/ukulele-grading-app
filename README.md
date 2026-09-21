@@ -312,8 +312,13 @@ grading_app/
 │   ├── settings.py            # โหลด settings.json ครั้งเดียว ใช้ร่วมกันทั้งเว็บแอปและ grade_exam.py
 │   └── console.py             # ตั้ง stdout/stderr เป็น UTF-8 กัน UnicodeEncodeError บน console ไทย
 ├── webapp/
-│   ├── app.py                 # เว็บแอป (Flask): /api/status, /api/grade, /api/save
-│   ├── templates/index.html   # หน้าจอเดียวจบ: กรอกชื่อ -> ใส่ PDF/รูป -> ตรวจ -> แก้คะแนน -> บันทึก
+│   ├── app.py                 # เว็บแอป (Flask): /api/status, /api/grade, /api/save, /api/batch/*
+│   ├── templates/_head.html   # หัว+ท้ายที่ทุกหน้าใช้ร่วมกัน (_foot.html) — แถบสถานะ/กล่องข้อความผิดพลาด
+│   ├── templates/home.html    # หน้าแรก: เลือกว่าจะตรวจรายคนหรือทั้งห้อง
+│   ├── templates/one.html     # ตรวจรายคน: กรอกชื่อ -> ใส่ PDF/รูป -> ตรวจ
+│   ├── templates/many.html    # ตรวจทั้งห้อง: เลือกไฟล์ทีเดียวหลายคน (ชื่อไฟล์ = ชื่อนักเรียน)
+│   ├── templates/roster.html  # รายชื่อในงานตรวจ: ความคืบหน้า + เข้าไปดูคำตอบทีละคน + บันทึกทั้งหมด
+│   ├── templates/result.html  # ผลตรวจของนักเรียน 1 คน: แก้คะแนนแล้วบันทึก (/result/<งาน>/<ลำดับ>)
 │   ├── templates/login.html   # หน้ากรอกรหัสผ่าน ใช้ตอนเปิดให้มือถือเข้า
 │   └── static/                # style.css + app.js (ไม่มี build step ไม่พึ่ง CDN ใช้ออฟไลน์ได้)
 ├── เปิดโปรแกรมตรวจข้อสอบ.bat  # ดับเบิลคลิกเปิดเว็บแอป — ทางเข้าหลักสำหรับครู

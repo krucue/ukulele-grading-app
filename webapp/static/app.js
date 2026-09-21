@@ -538,22 +538,29 @@ on("saveBtn", "click", async () => {
     savedOnce = true;
     btn.hidden = true;
     // บันทึกแล้วเปิดทางไปต่อ — งานคนเดียวไปตรวจคนใหม่ ส่วนงานทั้งห้องกลับไปรายชื่อ
-    setHidden("nextLink", false);
+    // ต้องแยกสองทางนี้ให้ถูก ไม่ใช่โชว์ทั้งคู่: ตรวจทั้งห้องแล้วกด "ตรวจนักเรียนคนต่อไป"
+    // จะพาออกไปหน้ากรอกชื่อเอง ทิ้งคนที่เหลือในรายชื่อไว้ข้างหลังโดยครูไม่ทันสังเกต
+    const single = Boolean(lastGrading && lastGrading.single);
+    setHidden("nextLink", !single);
     const back = $("backLink");
-    if (back && lastGrading && !lastGrading.single) {
+    if (back && !single) {
       back.textContent = "← กลับไปที่รายชื่อ (บันทึกคนนี้แล้ว)";
     }
   } catch (err) {
     show($("saveError"), `บันทึกไม่สำเร็จ: ${err.message}`);
   } finally {
     btn.disabled = false;
-    // เปิดจากรายชื่อ = ปุ่มนี้บันทึกเฉพาะคนที่เปิดอยู่ ไม่ใช่ทั้งห้อง ต้องคงข้อความไว้
-    btn.textContent =
-      openItemIndex === null
-        ? "บันทึกคะแนน"
-        : `บันทึกเฉพาะ ${(lastGrading && lastGrading.student.name) || "คนนี้"}`;
+    btn.textContent = saveButtonLabel();
   }
 });
+
+// เปิดจากรายชื่อ = ปุ่มนี้บันทึกเฉพาะคนที่เปิดอยู่ ไม่ใช่ทั้งห้อง ต้องบอกให้ชัดตั้งแต่
+// ก่อนกด ไม่ใช่ไปเปลี่ยนป้ายเอาตอนกดไปแล้ว — บนหน้ารายชื่อมีปุ่ม "บันทึกทั้งหมด" อยู่ด้วย
+// ถ้าปุ่มนี้เขียนแค่ "บันทึกคะแนน" ครูต้องเดาเองว่าหมายถึงคนเดียวหรือทั้งห้อง
+function saveButtonLabel() {
+  if (!lastGrading || lastGrading.single) return "บันทึกคะแนน";
+  return `บันทึกเฉพาะ ${lastGrading.student.name || "คนนี้"}`;
+}
 
 loadStatus().then(() => {
   firstStatusLoad = false;
@@ -591,7 +598,15 @@ function rememberBatch(jobId) {
 }
 
 function pill(status) {
-  const map = { รอตรวจ: "wait", กำลังตรวจ: "run", เสร็จ: "done", พลาด: "fail", ยกเลิก: "wait" };
+  const map = {
+    รอตรวจ: "wait",
+    กำลังตรวจ: "run",
+    เสร็จ: "done",
+    พลาด: "fail",
+    ยกเลิก: "wait",
+    // ไม่มีบรรทัดนี้แล้วแถวที่บันทึกลงชีตไปแล้วจะขึ้นป้ายสีเทาเหมือน "รอตรวจ"
+    บันทึกแล้ว: "saved",
+  };
   const span = document.createElement("span");
   span.className = `pill ${map[status] || "wait"}`;
   span.textContent = status;
@@ -886,6 +901,7 @@ if (PAGE === "result") {
       lastGrading = data;
       savedOnce = data.saved === true;
       renderResults(data);
+      setText("saveBtn", saveButtonLabel());
       const back = $("backLink");
       if (back && !data.single) {
         back.href = `/roster/${batchJobId}`;

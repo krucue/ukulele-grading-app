@@ -58,7 +58,16 @@ UPLOADABLE_IMAGE_SUFFIXES = ALLOWED_IMAGE_SUFFIXES | set(HEIC_SUFFIXES)
 # ครูจึงอัปโหลดของที่สแกนมาได้เลย ไม่ต้องไปหาโปรแกรมแปลงเป็นรูปก่อน
 ALLOWED_PDF_SUFFIXES = {".pdf"}
 
-MAX_UPLOAD_BYTES = 25 * 1024 * 1024  # รูปจากมือถือปกติ 3-8 MB ต่อหน้า, PDF สแกน 2-10 MB
+# ต่อไฟล์ — รูปจากมือถือปกติ 3-8 MB ต่อหน้า, PDF สแกน 2-10 MB ต่อใบ 25 MB จึงเหลือเฟือ
+MAX_FILE_BYTES = 25 * 1024 * 1024
+
+# ต่อคำขอทั้งก้อน — คนละตัวกับลิมิตต่อไฟล์ และต้องใหญ่กว่ามาก เพราะ "ตรวจทั้งห้อง"
+# ส่งกระดาษของทุกคนมาในคำขอเดียว ห้องละ 30 คน x PDF สแกน 10 MB = 300 MB
+#
+# เดิมตั้งค่านี้ไว้ 25 MB เท่ากับลิมิตต่อไฟล์ ผลคือตรวจรายคน (2 ไฟล์) ผ่านสบาย แต่
+# ตรวจทั้งห้องถูกตีกลับเป็น 413 ตั้งแต่ยังไม่เริ่มตรวจ พร้อมข้อความที่ชี้ผิดทางด้วยว่า
+# "ไฟล์ใหญ่เกิน 25 MB — ย่อรูปก่อนอัปโหลด" ทั้งที่ไฟล์แต่ละใบไม่ได้ใหญ่เกินสักใบ
+MAX_UPLOAD_BYTES = 600 * 1024 * 1024
 
 
 # โฟลเดอร์ที่มีโค้ดของโปรแกรม ใช้เช็คว่าไฟล์ถูกแก้หลังจากเซิร์ฟเวอร์ตัวนี้เริ่มทำงานไปแล้วหรือยัง
@@ -214,7 +223,34 @@ def _save_pdf_upload(file_storage, work_dir: str) -> str:
     return _write_temp_upload(file_storage, work_dir, prefix="scan_", suffix=suffix)
 
 
+def _upload_size(file_storage) -> int:
+    """ขนาดไฟล์ที่อัปโหลดมา โดยยังไม่ต้องเขียนลงดิสก์ — อ่านไม่ได้ก็คืน 0 (ถือว่าผ่าน)"""
+    stream = getattr(file_storage, "stream", None)
+    if stream is None:
+        return 0
+    try:
+        start = stream.tell()
+        stream.seek(0, os.SEEK_END)
+        size = stream.tell()
+        stream.seek(start)
+    except (OSError, ValueError, AttributeError):
+        return 0
+    else:
+        return size
+
+
 def _write_temp_upload(file_storage, work_dir: str, prefix: str, suffix: str) -> str:
+    # ลิมิตต่อไฟล์คนละตัวกับลิมิตของทั้งคำขอ (MAX_UPLOAD_BYTES) — ตัวนั้นใหญ่พอให้ส่ง
+    # ทั้งห้องมาทีเดียวได้ ตัวนี้จึงต้องเป็นคนบอกว่า "ใบนี้แหละที่ใหญ่ผิดปกติ" พร้อมชื่อไฟล์
+    # ไม่ใช่ปล่อยให้ครูเดาเองว่าในกองที่เลือกมาทั้งห้องนั้นใบไหนมีปัญหา
+    size = _upload_size(file_storage)
+    if size > MAX_FILE_BYTES:
+        shown = Path(file_storage.filename or "").name or "ไฟล์นี้"
+        raise GradingError(
+            f"{shown}: ไฟล์ใหญ่ {size / (1024 * 1024):.0f} MB เกิน "
+            f"{MAX_FILE_BYTES // (1024 * 1024)} MB ต่อไฟล์ — สแกนใหม่ที่ความละเอียดต่ำลง "
+            "(200-300 dpi พอ) หรือย่อรูปก่อนอัปโหลด"
+        )
     # ตั้งชื่อไฟล์เองทั้งหมด ไม่เอาชื่อเดิมมาใช้ กัน path traversal
     fd, path = tempfile.mkstemp(dir=work_dir, prefix=prefix, suffix=suffix)
     os.close(fd)
@@ -348,6 +384,10 @@ def _group_batch_uploads(files, work_dir: str) -> tuple[list[dict], list[str]]:
     PDF 1 ไฟล์ = 1 คน · รูปต้องมาเป็นคู่ P1/P2 ของชื่อเดียวกัน
     ไฟล์ที่จับคู่ไม่ได้ไม่ถูกเงียบทิ้ง — รายงานกลับไปให้ครูเห็นว่าใบไหนตกหล่น
     เพราะเงียบทิ้ง = นักเรียนคนนั้นไม่มีคะแนนโดยไม่มีอะไรฟ้อง
+
+    ไฟล์ที่รับไม่ได้ (ชนิดแปลก/ใหญ่เกิน/.heic บนเครื่องที่ยังแปลงไม่ได้) ก็ลงรายการปัญหา
+    เหมือนกัน ไม่ใช่โยน error ขึ้นไปจนล้มทั้งคำขอ — เดิมไฟล์แปลกปนมาใบเดียวทำให้ทั้งห้อง
+    ไม่ได้ตรวจสักคน ทั้งที่อีก 29 คนไม่มีอะไรผิด
     """
     jobs: dict[str, dict] = {}
     problems: list[str] = []
@@ -358,20 +398,11 @@ def _group_batch_uploads(files, work_dir: str) -> tuple[list[dict], list[str]]:
             continue
         student, page = _student_name_from_filename(raw_name)
         suffix = Path(raw_name).suffix.lower()
-
-        if suffix in ALLOWED_PDF_SUFFIXES:
+        is_pdf = suffix in ALLOWED_PDF_SUFFIXES
+        if is_pdf:
             # PDF ที่ชื่อลงท้ายด้วยเลข 1/2 ยังเป็นของคนเดียวจบ ไม่ใช่รูปแยกหน้า
             student = Path(raw_name).stem.strip()
-            entry = jobs.setdefault(student, {"student": student, "pdf": None, "pages": {}})
-            if entry["pdf"] is not None:
-                problems.append(f"{student}: มีไฟล์ PDF ซ้ำกันหลายไฟล์ ใช้ไฟล์แรกไฟล์เดียว")
-                continue
-            per_student_dir = tempfile.mkdtemp(prefix="ใบ_", dir=work_dir)
-            entry["pdf"] = _save_pdf_upload(upload, per_student_dir)
-            entry["dir"] = per_student_dir
-            continue
-
-        if page is None:
+        elif page is None:
             problems.append(
                 f"{raw_name}: บอกไม่ได้ว่าเป็นหน้าไหน — ตั้งชื่อไฟล์รูปให้ลงท้ายด้วย 1 หรือ 2 "
                 "(เช่น 948P1.jpg กับ 948P2.jpg) หรือสแกนรวมเป็น PDF ไฟล์เดียว"
@@ -379,14 +410,34 @@ def _group_batch_uploads(files, work_dir: str) -> tuple[list[dict], list[str]]:
             continue
 
         entry = jobs.setdefault(student, {"student": student, "pdf": None, "pages": {}})
+        # โฟลเดอร์ต่อคน สร้างครั้งเดียวแล้วใช้ซ้ำ — เดิมไฟล์ PDF สร้างทับของเดิมทิ้ง
+        # ทำให้รูปที่เซฟไว้ก่อนหน้าอยู่คนละโฟลเดอร์กับที่จดไว้ว่าเป็นของคนนี้
         entry.setdefault("dir", tempfile.mkdtemp(prefix="ใบ_", dir=work_dir))
+
+        if is_pdf:
+            if entry["pdf"] is not None:
+                problems.append(f"{student}: มีไฟล์ PDF ซ้ำกันหลายไฟล์ ใช้ไฟล์แรกไฟล์เดียว")
+                continue
+            try:
+                entry["pdf"] = _save_pdf_upload(upload, entry["dir"])
+            except GradingError as exc:
+                problems.append(str(exc))
+            continue
+
         if page in entry["pages"]:
             problems.append(f"{student}: มีรูปหน้า {page} ซ้ำกัน ใช้ไฟล์แรกไฟล์เดียว")
             continue
-        entry["pages"][page] = _save_upload(upload, page, entry["dir"])
+        try:
+            entry["pages"][page] = _save_upload(upload, page, entry["dir"])
+        except GradingError as exc:
+            problems.append(f"{raw_name}: {exc}")
 
     items: list[dict] = []
     for entry in jobs.values():
+        # ไม่เหลือไฟล์ที่ใช้ได้เลยสักใบ แปลว่าทุกใบของคนนี้ถูกรายงานไปแล้วรายไฟล์
+        # จึงไม่ต้องเติมข้อความ "ขาดหน้า X" ซ้ำอีก ซึ่งจะชี้ผิดทางด้วย
+        if entry["pdf"] is None and not entry["pages"]:
+            continue
         if entry["pdf"] is None and len(entry["pages"]) < 2:
             missing = 2 if 1 in entry["pages"] else 1
             problems.append(
@@ -397,6 +448,30 @@ def _group_batch_uploads(files, work_dir: str) -> tuple[list[dict], list[str]]:
 
     items.sort(key=lambda e: e["student"])
     return items, problems
+
+
+# งานตรวจที่เก็บค้างไว้ในหน่วยความจำได้มากที่สุด
+#
+# จำเป็นเพราะการตรวจ "รายคน" ก็สร้างงานใหม่ทุกครั้งเหมือนกัน (เพื่อให้ผลตรวจมี URL
+# ของตัวเอง) ครูที่เปิดโปรแกรมค้างไว้ทั้งเทอมแล้วตรวจวันละหลายสิบคน จะสะสมงานเก่าที่
+# ไม่มีใครเปิดดูอีกแล้วไว้เรื่อย ๆ โดยไม่มีทางลดลงเลย
+#
+# 50 งานพอกับการใช้จริงมาก ๆ (ตรวจทั้งห้อง = 1 งานต่อห้อง) และงานที่ถูกทิ้งไปแล้วครู
+# ยังเจอข้อความบอกเหตุผลใน _find_job ไม่ใช่หน้าขาว
+MAX_KEPT_JOBS = 50
+
+
+def _keep_recent_jobs(jobs: dict, limit: int = MAX_KEPT_JOBS) -> None:
+    """ทิ้งงานเก่าที่ตรวจจบแล้ว ให้เหลือไม่เกิน limit — ไม่แตะงานที่ยังตรวจค้างอยู่"""
+    extra = len(jobs) - limit
+    if extra <= 0:
+        return
+    finished = sorted(
+        (job for job in jobs.values() if not job["running"]),
+        key=lambda job: job.get("created_at", 0.0),
+    )
+    for job in finished[:extra]:
+        jobs.pop(job["id"], None)
 
 
 def create_app(settings: AppSettings | None = None, ocr_override=None) -> Flask:
@@ -453,8 +528,17 @@ def create_app(settings: AppSettings | None = None, ocr_override=None) -> Flask:
 
     @app.errorhandler(413)
     def handle_too_large(_exc):
+        # ลิมิตนี้คือ "ทั้งก้อนที่ส่งมาในครั้งเดียว" ไม่ใช่ต่อไฟล์ — ไฟล์ใบเดียวที่ใหญ่เกิน
+        # ถูกดักไว้ก่อนแล้วใน _write_temp_upload พร้อมบอกชื่อไฟล์ ที่มาถึงตรงนี้จึงเป็น
+        # กรณีเลือกมาทีเดียวเยอะเกิน ต้องแนะนำให้แบ่งรอบ ไม่ใช่ให้ไปย่อรูป
         mb = MAX_UPLOAD_BYTES // (1024 * 1024)
-        return jsonify({"error": f"ไฟล์ใหญ่เกิน {mb} MB — ย่อรูปก่อนอัปโหลด"}), 413
+        return jsonify(
+            {
+                "error": f"ไฟล์ที่เลือกมารวมกันใหญ่เกิน {mb} MB ต่อครั้ง "
+                "— แบ่งอัปโหลดเป็นรอบละ 10-15 คน แล้วเริ่มตรวจใหม่อีกรอบได้เลย "
+                "(ผลของรอบก่อนที่บันทึกลงชีตไปแล้วไม่หาย)"
+            }
+        ), 413
 
     @app.after_request
     def no_cache(response):
@@ -801,6 +885,7 @@ def create_app(settings: AppSettings | None = None, ocr_override=None) -> Flask:
         """เก็บผลตรวจรายคนเป็นงานที่มีสมาชิกคนเดียว ใช้โครงเดียวกับโหมดตรวจหลายคน"""
         job = {
             "id": uuid.uuid4().hex[:12],
+            "created_at": time.time(),
             "work_dir": "",
             "running": False,
             "cancelled": False,
@@ -821,6 +906,7 @@ def create_app(settings: AppSettings | None = None, ocr_override=None) -> Flask:
                 }
             ],
         }
+        _keep_recent_jobs(app.config["BATCH_JOBS"])
         app.config["BATCH_JOBS"][job["id"]] = job
         return job
 
@@ -1055,6 +1141,7 @@ def create_app(settings: AppSettings | None = None, ocr_override=None) -> Flask:
 
         job = {
             "id": uuid.uuid4().hex[:12],
+            "created_at": time.time(),
             "work_dir": work_dir,
             "running": True,
             "cancelled": False,
@@ -1076,6 +1163,7 @@ def create_app(settings: AppSettings | None = None, ocr_override=None) -> Flask:
                 for index, entry in enumerate(grouped)
             ],
         }
+        _keep_recent_jobs(app.config["BATCH_JOBS"])
         app.config["BATCH_JOBS"][job["id"]] = job
 
         worker = threading.Thread(target=_run_batch, args=(job, config), daemon=True)
@@ -1103,7 +1191,20 @@ def create_app(settings: AppSettings | None = None, ocr_override=None) -> Flask:
         item = job["items"][index]
         if item["payload"] is None:
             raise GradingError(f"{item['student']}: ยังตรวจไม่เสร็จ ({item['status']})")
-        return jsonify({**item["payload"], "index": index, "saved": item["saved"]})
+        return jsonify(
+            {
+                **item["payload"],
+                "index": index,
+                "saved": item["saved"],
+                # งานนี้มีคนเดียว (มาจากหน้าตรวจรายคน) หรือเป็นงานทั้งห้อง —
+                # หน้าผลตรวจใช้ตัดสินว่าลิงก์ควรพากลับไปที่รายชื่อ หรือพาไปตรวจคนต่อไป
+                # ถ้าไม่ส่งมา หน้าเว็บจะถือว่าเป็นงานทั้งห้องเสมอ แล้วพาครูไปผิดทางทั้งสองโหมด
+                "single": bool(job["single"]),
+                # ชื่อนี้มีแถวอยู่ในชีตก่อนเริ่มงานนี้แล้วหรือเปล่า — เดิมมีแต่ในหน้ารายชื่อ
+                # ทั้งที่จุดที่นิ้วอยู่บนปุ่มบันทึกจริง ๆ คือหน้านี้
+                "already_saved": bool(item["already"]),
+            }
+        )
 
     @app.route("/api/batch/<job_id>/cancel", methods=["POST"])
     def api_batch_cancel(job_id: str):

@@ -958,6 +958,180 @@ if _Image is not None:
             check("รายชื่อบอกว่าคนไหนเคยบันทึกแล้ว", by_name["929"]["already"] is True)
             check("คนที่ยังไม่เคยบันทึกไม่ติดธง", by_name["ยังไม่เคย"]["already"] is False)
 
+    # ---------- หน้าผลตรวจต้องรู้ว่ามาจากงานคนเดียวหรืองานทั้งห้อง ----------
+    # หน้า /result ใช้ธงนี้ตัดสินว่าลิงก์ควรพากลับไปที่รายชื่อ หรือพาไปตรวจคนต่อไป
+    # ถ้าเซิร์ฟเวอร์ไม่ส่งมา หน้าเว็บจะถือว่าเป็นงานทั้งห้องเสมอ แล้วพาครูไปผิดทางทั้งสองโหมด:
+    # ตรวจรายคนเสร็จจะไม่มีปุ่มตรวจคนต่อไป ส่วนตรวจทั้งห้องจะโดนพาออกไปหน้ากรอกชื่อเอง
+    print()
+    print("ผลตรวจบอกได้ว่ามาจากงานแบบไหน")
+
+    with tempfile.TemporaryDirectory() as tmpdir:
+        flag_app = create_app(
+            AppSettings(csv_path=str(Path(tmpdir) / "ผลตรวจ.csv"), ocr_provider="api"),
+            ocr_override=canned_ocr,
+        )
+        flag_client = flag_app.test_client()
+        single = flag_client.post(
+            "/api/grade",
+            data={
+                "student_name": "ด.ช. คนเดียว",
+                "page1": (BytesIO(b"x"), "หน้า1.jpg"),
+                "page2": (BytesIO(b"x"), "หน้า2.jpg"),
+            },
+            content_type="multipart/form-data",
+        ).get_json()
+        one_item = flag_client.get(f"/api/batch/{single['job_id']}/item/0").get_json()
+        check("ตรวจรายคน -> ผลตรวจบอกว่าเป็นงานคนเดียว", one_item["single"] is True)
+        check("ผลตรวจบอกด้วยว่าชื่อนี้เคยบันทึกไปแล้วหรือยัง", one_item["already_saved"] is False)
+
+        if _Image is not None:
+            many = flag_client.post(
+                "/api/batch/start",
+                data={"papers": [(_one_paper_pdf(), "929.pdf"), (_one_paper_pdf(), "Parn.pdf")]},
+                content_type="multipart/form-data",
+            ).get_json()
+            for _ in range(80):
+                if not flag_client.get(f"/api/batch/{many['job_id']}").get_json()["running"]:
+                    break
+                time.sleep(0.1)
+            many_item = flag_client.get(f"/api/batch/{many['job_id']}/item/0").get_json()
+            check("ตรวจทั้งห้อง -> ผลตรวจบอกว่าไม่ใช่งานคนเดียว", many_item["single"] is False)
+            check(
+                "ผลตรวจรายคนในงานทั้งห้องก็บอกเรื่องชื่อซ้ำได้",
+                many_item["already_saved"] is False,
+            )
+
+    # ---------- ลิมิตขนาดไฟล์: ต่อไฟล์ กับ ต่อคำขอ เป็นคนละตัวกัน ----------
+    # เดิมตั้งลิมิตของทั้งคำขอไว้ 25 MB เท่ากับลิมิตต่อไฟล์ ผลคือ "ตรวจทั้งห้อง" ที่ส่ง
+    # กระดาษของทุกคนมาในคำขอเดียว (30 คน x PDF สแกน = หลายร้อย MB) ถูกตีกลับตั้งแต่
+    # ยังไม่เริ่มตรวจ พร้อมข้อความที่ชี้ผิดทางว่าให้ไปย่อรูป ทั้งที่ไม่มีไฟล์ไหนใหญ่เกินสักใบ
+    print()
+    print("ลิมิตขนาดไฟล์")
+
+    from webapp.app import MAX_FILE_BYTES, MAX_UPLOAD_BYTES
+
+    check(
+        "ลิมิตของทั้งคำขอต้องใหญ่พอสำหรับทั้งห้อง (มากกว่าลิมิตต่อไฟล์หลายเท่า)",
+        MAX_UPLOAD_BYTES >= MAX_FILE_BYTES * 20,
+        f"ต่อคำขอ {MAX_UPLOAD_BYTES // (1024 * 1024)} MB / ต่อไฟล์ {MAX_FILE_BYTES // (1024 * 1024)} MB",
+    )
+
+    with tempfile.TemporaryDirectory() as tmpdir:
+        size_app = create_app(
+            AppSettings(csv_path=str(Path(tmpdir) / "ผลตรวจ.csv"), ocr_provider="api"),
+            ocr_override=canned_ocr,
+        )
+        size_client = size_app.test_client()
+
+        # ห้องจริงส่งมารวมกันเกิน 25 MB แน่นอน — ต้องผ่าน ไม่ใช่ 413
+        if _Image is not None:
+            papers = [(_one_paper_pdf(), f"คน{n}.pdf") for n in range(4)]
+            papers.append((BytesIO(b"%PDF-1.4\n" + b"0" * (26 * 1024 * 1024)), "ใหญ่เกิน.pdf"))
+            res = size_client.post(
+                "/api/batch/start", data={"papers": papers}, content_type="multipart/form-data"
+            )
+            started_size = res.get_json()
+            check(
+                "ส่งไฟล์รวมกันเกิน 25 MB -> ไม่ถูกตีกลับทั้งก้อน",
+                res.status_code == 200,
+                str(started_size)[:160],
+            )
+            # ไฟล์ใหญ่เกินใบเดียวต้องไม่ล้มทั้งห้อง — อีก 4 คนไม่ได้ทำอะไรผิด
+            check(
+                "ไฟล์ใหญ่เกินใบเดียวไม่ล้มทั้งห้อง",
+                started_size["total"] == 4,
+                str(started_size.get("total")),
+            )
+            check(
+                "บอกชื่อไฟล์ที่ใหญ่เกินให้ครูรู้ว่าใบไหน",
+                any("ใหญ่เกิน.pdf" in problem for problem in started_size["problems"]),
+                str(started_size["problems"]),
+            )
+
+        # ไฟล์ใหญ่เกินในโหมดตรวจรายคน ต้องบอกชื่อไฟล์ ไม่ใช่ 413 ลอย ๆ
+        big = size_client.post(
+            "/api/grade",
+            data={
+                "student_name": "ใหญ่",
+                "page1": (BytesIO(b"\xff" * (26 * 1024 * 1024)), "ใหญ่มาก.jpg"),
+                "page2": (BytesIO(b"x"), "หน้า2.jpg"),
+            },
+            content_type="multipart/form-data",
+        )
+        check("ไฟล์เดียวใหญ่เกิน -> ถูกตีกลับ", big.status_code == 400)
+        check(
+            "บอกชื่อไฟล์ที่ใหญ่เกิน",
+            "ใหญ่มาก.jpg" in big.get_json()["error"],
+            big.get_json()["error"][:120],
+        )
+
+    # ---------- ไฟล์แปลกปนมาในกองของทั้งห้อง ----------
+    # เดิมไฟล์ชนิดที่รับไม่ได้ปนมาใบเดียว ทำให้ทั้งคำขอล้มเป็น 400 ไม่ได้ตรวจใครเลยสักคน
+    if _Image is not None:
+        print()
+        print("ไฟล์แปลกปนมาในกองของทั้งห้อง")
+
+        with tempfile.TemporaryDirectory() as tmpdir:
+            odd_app = create_app(
+                AppSettings(csv_path=str(Path(tmpdir) / "ผลตรวจ.csv"), ocr_provider="api"),
+                ocr_override=canned_ocr,
+            )
+            odd = odd_app.test_client().post(
+                "/api/batch/start",
+                data={
+                    "papers": [
+                        (_one_paper_pdf(), "929.pdf"),
+                        (_one_paper_pdf(), "Parn.pdf"),
+                        (BytesIO(b"note"), "โน้ตของครู1.txt"),
+                    ]
+                },
+                content_type="multipart/form-data",
+            )
+            odd_job = odd.get_json()
+            check("ไฟล์แปลกปนมา -> ยังเริ่มตรวจได้", odd.status_code == 200, str(odd_job)[:160])
+            check("คนที่ไฟล์ถูกต้องยังได้ตรวจครบ", odd_job["total"] == 2, str(odd_job.get("total")))
+            check(
+                "ไฟล์ที่ใช้ไม่ได้ถูกรายงาน ไม่เงียบทิ้ง",
+                any("โน้ตของครู1.txt" in problem for problem in odd_job["problems"]),
+                str(odd_job["problems"]),
+            )
+
+    # ---------- งานเก่าต้องถูกเก็บกวาด ----------
+    # ตรวจรายคนก็สร้างงานใหม่ทุกครั้ง (เพื่อให้ผลตรวจมี URL ของตัวเอง) ถ้าไม่เก็บกวาด
+    # ครูที่เปิดโปรแกรมค้างไว้ทั้งเทอมจะสะสมงานที่ไม่มีใครเปิดดูอีกแล้วไว้เรื่อย ๆ
+    print()
+    print("เก็บกวาดงานเก่า")
+
+    from webapp.app import MAX_KEPT_JOBS, _keep_recent_jobs
+
+    fake_jobs = {
+        f"งาน{n}": {"id": f"งาน{n}", "created_at": float(n), "running": False}
+        for n in range(MAX_KEPT_JOBS + 10)
+    }
+    fake_jobs["กำลังตรวจอยู่"] = {"id": "กำลังตรวจอยู่", "created_at": 0.0, "running": True}
+    _keep_recent_jobs(fake_jobs)
+    check(
+        "เหลืองานไม่เกินที่กำหนด",
+        len(fake_jobs) <= MAX_KEPT_JOBS + 1,
+        f"เหลือ {len(fake_jobs)} งาน",
+    )
+    check("งานที่ยังตรวจค้างอยู่ห้ามถูกทิ้ง", "กำลังตรวจอยู่" in fake_jobs)
+    check("ทิ้งงานเก่าสุดก่อน", "งาน0" not in fake_jobs and f"งาน{MAX_KEPT_JOBS + 9}" in fake_jobs)
+
+    # ---------- กล่องข้อความผิดพลาดต้องมีครบทุกหน้า ----------
+    # app.js รายงานปัญหาระดับหน้า (ติดต่อเซิร์ฟเวอร์ไม่ได้ / หลุดจากระบบ / หน้าเก่าค้าง)
+    # ลงกล่อง formError หน้าไหนไม่มีกล่องนี้ ข้อความจะหายเงียบ ครูไม่รู้ว่าเกิดอะไรขึ้น
+    print()
+    print("ทุกหน้ามีที่แสดงข้อความผิดพลาด")
+
+    with tempfile.TemporaryDirectory() as tmpdir:
+        page_client = create_app(
+            AppSettings(csv_path=str(Path(tmpdir) / "ผลตรวจ.csv"), ocr_provider="api")
+        ).test_client()
+        for path in ("/", "/one", "/many", "/roster/งานทดสอบ", "/result/งานทดสอบ/0"):
+            html = page_client.get(path).get_data(as_text=True)
+            check(f"{path} มีกล่องแสดงข้อความผิดพลาด", html.count('id="formError"') == 1)
+
 
 print(f"\nผ่าน {passed} ตก {failed}")
 sys.exit(1 if failed else 0)
